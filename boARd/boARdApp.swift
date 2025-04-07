@@ -19,7 +19,7 @@ struct boARdApp: App {
                                     isLoading = false
                                 }
                             }
-                        }
+                        }   
                 }
             }
         }

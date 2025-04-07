@@ -273,6 +273,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"boARd/Preview Content\"";
+				DEVELOPMENT_TEAM = 5WNL3YH7K3;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = boARd/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -280,7 +281,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.boARd;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jeremy.boARd;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -294,6 +295,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"boARd/Preview Content\"";
+				DEVELOPMENT_TEAM = 5WNL3YH7K3;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = boARd/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -301,7 +303,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.boARd;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jeremy.boARd;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -332,4 +334,4 @@
 /* End XCConfigurationList section */
 	};
 	rootObject = 58A4C38528F0E72C00E16278 /* Project object */;
-} 
+}
