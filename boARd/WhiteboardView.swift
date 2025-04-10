@@ -223,65 +223,137 @@ struct CourtBackgroundView: View {
 
 // Create a component for basketballs display
 struct BasketballsView: View {
+    let courtType: CourtType
     @Binding var basketballs: [BasketballItem]
     @Binding var draggedBasketballIndex: Int?
     @Binding var currentTouchType: TouchInputType
+    @Binding var selectedTool: DrawingTool
     
+    // Define the size of the basketball for hit testing
+    private let basketballSize: CGFloat = 40 
+
     var body: some View {
-        ForEach(basketballs.indices, id: \.self) { index in
-            let basketball = basketballs[index]
-            BasketballView(position: basketball.position)
-                .position(x: basketball.position.x, y: basketball.position.y)
-                .gesture(
-                    DragGesture(coordinateSpace: .local)
-                        .onChanged { value in
-                            // Only allow finger drags for basketballs
-                            if currentTouchType != .pencil {
-                                draggedBasketballIndex = index
-                                var updatedBasketball = basketball
-                                updatedBasketball.position = value.location
-                                
-                                // We'll update normalized position in the parent view
-                                basketballs[index] = updatedBasketball
-                            }
-                        }
-                        .onEnded { _ in
-                            draggedBasketballIndex = nil
-                        }
-                )
+        ZStack { // Use a ZStack as the container for the gesture
+            ForEach(basketballs.indices, id: \.self) { index in
+                let basketball = basketballs[index]
+                BasketballView(position: basketball.position)
+                    .position(x: basketball.position.x, y: basketball.position.y)
+                    // Removed gesture from individual item
+            }
         }
+        .contentShape(Rectangle()) // Ensure the ZStack can receive gestures
+        .gesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .local) // Use local space of ZStack
+                .onChanged { value in
+                    // Only move if the correct tool is selected and it's not a pencil
+                    guard selectedTool == .move, currentTouchType != .pencil else { return }
+                    
+                    // If not currently dragging, find the item under the start location
+                    if draggedBasketballIndex == nil {
+                        draggedBasketballIndex = basketballs.indices.first { index in
+                            let item = basketballs[index]
+                            // Calculate the frame of the item for hit testing
+                            let itemFrame = CGRect(x: item.position.x - basketballSize / 2,
+                                                   y: item.position.y - basketballSize / 2,
+                                                   width: basketballSize,
+                                                   height: basketballSize)
+                            return itemFrame.contains(value.startLocation)
+                        }
+                    }
+                    
+                    // If an item is being dragged, update its position
+                    if let index = draggedBasketballIndex {
+                        basketballs[index].position = value.location
+                    }
+                }
+                .onEnded { value in
+                    if let index = draggedBasketballIndex {
+                        // Update normalized position on drag end
+                        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+                        let finalPosition = value.location
+                        // Clamp position to boundary before normalizing
+                        let clampedX = max(0, min(boundary.width, finalPosition.x))
+                        let clampedY = max(0, min(boundary.height, finalPosition.y))
+                        let clampedPosition = CGPoint(x: clampedX, y: clampedY)
+                        
+                        basketballs[index].position = clampedPosition // Update position with clamped value
+                        
+                        let normalizedX = clampedPosition.x / boundary.width
+                        let normalizedY = clampedPosition.y / boundary.height
+                        basketballs[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
+                    }
+                    // Reset the dragged index regardless of whether an item was found
+                    draggedBasketballIndex = nil 
+                }
+        )
     }
 }
 
 // Create a component for players display
 struct PlayersView: View {
+    let courtType: CourtType
     @Binding var players: [PlayerCircle]
     @Binding var draggedPlayerIndex: Int?
     @Binding var currentTouchType: TouchInputType
+    @Binding var selectedTool: DrawingTool
     
+    // Define the size of the player circle for hit testing
+    private let playerSize: CGFloat = 50
+
     var body: some View {
-        ForEach(players.indices, id: \.self) { index in
-            let player = players[index]
-            PlayerCircleView(position: player.position, number: player.number, color: player.color)
-                .position(x: player.position.x, y: player.position.y)
-                .gesture(
-                    DragGesture(coordinateSpace: .local)
-                        .onChanged { value in
-                            // Only allow finger drags for players
-                            if currentTouchType != .pencil {
-                                draggedPlayerIndex = index
-                                var updatedPlayer = player
-                                updatedPlayer.position = value.location
-                                
-                                // We'll update normalized position in the parent view
-                                players[index] = updatedPlayer
-                            }
-                        }
-                        .onEnded { _ in
-                            draggedPlayerIndex = nil
-                        }
-                )
+        ZStack { // Use a ZStack as the container for the gesture
+            ForEach(players.indices, id: \.self) { index in
+                let player = players[index]
+                PlayerCircleView(position: player.position, number: player.number, color: player.color)
+                    .position(x: player.position.x, y: player.position.y)
+                    // Removed gesture from individual item
+            }
         }
+        .contentShape(Rectangle()) // Ensure the ZStack can receive gestures
+        .gesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .local) // Use local space of ZStack
+                .onChanged { value in
+                    // Only move if the correct tool is selected and it's not a pencil
+                    guard selectedTool == .move, currentTouchType != .pencil else { return }
+                    
+                    // If not currently dragging, find the item under the start location
+                    if draggedPlayerIndex == nil {
+                        draggedPlayerIndex = players.indices.first { index in
+                            let item = players[index]
+                            // Calculate the frame of the item for hit testing
+                            let itemFrame = CGRect(x: item.position.x - playerSize / 2,
+                                                   y: item.position.y - playerSize / 2,
+                                                   width: playerSize,
+                                                   height: playerSize)
+                            return itemFrame.contains(value.startLocation)
+                        }
+                    }
+                    
+                    // If an item is being dragged, update its position
+                    if let index = draggedPlayerIndex {
+                        players[index].position = value.location
+                    }
+                }
+                .onEnded { value in
+                    if let index = draggedPlayerIndex {
+                        // Update normalized position on drag end
+                        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+                        let finalPosition = value.location
+                        // Clamp position to boundary before normalizing
+                        let clampedX = max(0, min(boundary.width, finalPosition.x))
+                        let clampedY = max(0, min(boundary.height, finalPosition.y))
+                        let clampedPosition = CGPoint(x: clampedX, y: clampedY)
+                        
+                        players[index].position = clampedPosition // Update position with clamped value
+                        
+                        let normalizedX = clampedPosition.x / boundary.width
+                        let normalizedY = clampedPosition.y / boundary.height
+                        players[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
+                    }
+                    // Reset the dragged index regardless of whether an item was found
+                    draggedPlayerIndex = nil
+                }
+        )
     }
 }
 
@@ -304,6 +376,7 @@ struct WhiteboardView: View {
     @State private var lastTouchLocation: CGPoint = .zero
     @State private var showPlayerLimitAlert = false
     @State private var showBasketballLimitAlert = false
+    @State private var showClearConfirmation = false
     
     // Add this new state variable to track all actions
     @State private var actions: [Action] = []
@@ -342,10 +415,8 @@ struct WhiteboardView: View {
                         }
                     },
                     onClear: {
-                        drawings.removeAll()
-                        players.removeAll()
-                        basketballs.removeAll()
-                        actions.removeAll()
+                        // Set the state to show the confirmation alert
+                        showClearConfirmation = true
                     }
                 )
                 .padding(.vertical, 8)
@@ -366,6 +437,19 @@ struct WhiteboardView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text("You can only have one basketball on the court at a time.")
+            }
+            // Add the confirmation alert modifier
+            .alert("Clear Whiteboard?", isPresented: $showClearConfirmation) {
+                Button("Clear", role: .destructive) {
+                    // Perform the clear action
+                    drawings.removeAll()
+                    players.removeAll()
+                    basketballs.removeAll()
+                    actions.removeAll()
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Are you sure you want to clear the whiteboard? This action cannot be undone.")
             }
         }
     }
@@ -404,12 +488,12 @@ struct WhiteboardView: View {
             
             // Add player mode overlay
             if isAddingPlayer {
-                addPlayerOverlay(drawingWidth: drawingWidth, drawingHeight: drawingHeight, offsetX: drawingOffsetX, offsetY: drawingOffsetY)
+                addPlayerOverlay()
             }
             
             // Add basketball mode overlay
             if isAddingBasketball {
-                addBasketballOverlay(drawingWidth: drawingWidth, drawingHeight: drawingHeight, offsetX: drawingOffsetX, offsetY: drawingOffsetY)
+                addBasketballOverlay()
             }
         }
     }
@@ -425,64 +509,88 @@ struct WhiteboardView: View {
         let containerWidth = courtType == .full ? screenWidth * 0.98 * 1.65 : screenWidth * 0.98 * 0.97
         let containerHeight = courtType == .full ? (screenHeight - 48) * 0.98 * 1.58 : (screenHeight - 48) * 0.98 * 0.97
         
-        ZStack {
+        ZStack { // Outer ZStack containing background and the drawing area
             // Court image background
             CourtBackgroundView(courtType: courtType, courtWidth: courtWidth, courtHeight: courtHeight)
             
-            // Drawing layer
-            DrawingLayer(
-                courtType: courtType,
-                drawings: $drawings,
-                currentDrawing: $currentDrawing,
-                basketballs: $basketballs,
-                players: $players,
-                selectedTool: $selectedTool,
-                selectedPenStyle: $selectedPenStyle,
-                draggedBasketballIndex: $draggedBasketballIndex,
-                draggedPlayerIndex: $draggedPlayerIndex
-            )
-            .frame(width: drawingWidth, height: drawingHeight)
-            .offset(x: drawingOffsetX, y: drawingOffsetY)
-            
-            // Touch detection
-            TouchTypeDetectionView(
-                onTouchesChanged: { touchType, locations in
-                    if !locations.isEmpty {
-                        let location = locations.first!
-                        handleTouchChanged(touchType: touchType, location: location)
+            // Inner ZStack for all drawing-related content
+            ZStack {
+                // Drawing layer
+                DrawingLayer(
+                    courtType: courtType,
+                    drawings: $drawings,
+                    currentDrawing: $currentDrawing,
+                    basketballs: $basketballs, // Pass bindings down if needed by DrawingLayer itself
+                    players: $players,
+                    selectedTool: $selectedTool,
+                    selectedPenStyle: $selectedPenStyle,
+                    draggedBasketballIndex: $draggedBasketballIndex, // Pass bindings down
+                    draggedPlayerIndex: $draggedPlayerIndex // Pass bindings down
+                )
+                // No frame or offset here - it inherits from parent ZStack
+
+                // Touch detection - Sized to match drawing area
+                TouchTypeDetectionView(
+                    onTouchesChanged: { touchType, locations in
+                        if !locations.isEmpty {
+                            let location = locations.first!
+                            handleTouchChanged(touchType: touchType, location: location)
+                        }
+                    },
+                    onTouchesEnded: { touchType in
+                        handleTouchEnded(touchType: touchType)
                     }
-                },
-                onTouchesEnded: { touchType in
-                    handleTouchEnded(touchType: touchType)
+                )
+                .allowsHitTesting(true) // Capture touches for this area
+                // No frame or offset here
+
+                // Basketballs - Positioned within this ZStack's coordinate space
+                BasketballsView(
+                    courtType: courtType,
+                    basketballs: $basketballs,
+                    draggedBasketballIndex: $draggedBasketballIndex,
+                    currentTouchType: $currentTouchType,
+                    selectedTool: $selectedTool
+                )
+                // No frame or offset here
+
+                // Player circles - Positioned within this ZStack's coordinate space
+                PlayersView(
+                    courtType: courtType,
+                    players: $players,
+                    draggedPlayerIndex: $draggedPlayerIndex,
+                    currentTouchType: $currentTouchType,
+                    selectedTool: $selectedTool
+                )
+                // No frame or offset here
+
+                // Pencil indicator - Positioned within this ZStack's coordinate space
+                if showPencilIndicator {
+                    Circle()
+                        .fill(Color.blue.opacity(0.3))
+                        .frame(width: 20, height: 20)
+                        .position(lastTouchLocation) // lastTouchLocation should be relative to this ZStack
+                        .allowsHitTesting(false) // Don't let indicator block touches
                 }
-            )
-            .frame(width: drawingWidth, height: drawingHeight)
-            .offset(x: drawingOffsetX, y: drawingOffsetY)
-            .allowsHitTesting(true)
+                
+                // --- Add Overlays Here --- 
+                if isAddingPlayer {
+                    addPlayerOverlay()
+                }
             
-            // Basketballs
-            BasketballsView(
-                basketballs: $basketballs,
-                draggedBasketballIndex: $draggedBasketballIndex,
-                currentTouchType: $currentTouchType
-            )
-            
-            // Player circles
-            PlayersView(
-                players: $players,
-                draggedPlayerIndex: $draggedPlayerIndex,
-                currentTouchType: $currentTouchType
-            )
-            
-            // Pencil indicator
-            if showPencilIndicator {
-                Circle()
-                    .fill(Color.blue.opacity(0.3))
-                    .frame(width: 20, height: 20)
-                    .position(lastTouchLocation)
+                if isAddingBasketball {
+                    addBasketballOverlay()
+                }
+                // --- End Overlays --- 
+                
             }
+            .frame(width: drawingWidth, height: drawingHeight) // Apply frame to inner ZStack
+            .offset(x: drawingOffsetX, y: drawingOffsetY) // Apply offset to inner ZStack
+            .clipped() // Prevent drawing outside the bounds
+            .contentShape(Rectangle()) // Define hit area for gestures if needed directly on ZStack
+            
         }
-        .frame(width: containerWidth, height: containerHeight)
+        .frame(width: containerWidth, height: containerHeight) // Outer frame remains
     }
     
     // Debug overlay
@@ -512,14 +620,16 @@ struct WhiteboardView: View {
     
     // Add player overlay
     @ViewBuilder
-    private func addPlayerOverlay(drawingWidth: CGFloat, drawingHeight: CGFloat, offsetX: CGFloat, offsetY: CGFloat) -> some View {
+    private func addPlayerOverlay() -> some View {
         ZStack {
+            // Semi-transparent background
             Color.black.opacity(0.3)
                 .edgesIgnoringSafeArea(.all)
-                .onTapGesture {
+                .onTapGesture { // Tap outside the gesture area to cancel
                     isAddingPlayer = false
                 }
             
+            // Informational text
             VStack {
                 Text("Tap within the court to add player")
                     .font(.headline)
@@ -531,17 +641,17 @@ struct WhiteboardView: View {
                 
                 Spacer()
             }
+            .allowsHitTesting(false) // Let taps pass through the text area
             
-            Rectangle()
-                .fill(Color.clear)
-                .frame(width: drawingWidth, height: drawingHeight)
-                .offset(x: offsetX, y: offsetY)
-                .contentShape(Rectangle())
+            // Gesture capturing area (fills the parent - the inner ZStack)
+            Color.clear
+                .contentShape(Rectangle()) // Makes the clear color tappable
+                .border(Color.red, width: 2) // Optional: keep border for debugging
                 .gesture(
                     // Use DragGesture with minimal distance to detect taps
                     DragGesture(minimumDistance: 0)
                         .onEnded { value in
-                            // Get the tap location from the gesture value
+                            // Get the tap location relative to this view (which is the inner ZStack)
                             let tapPosition = value.location
                             addPlayerAt(position: tapPosition)
                             isAddingPlayer = false
@@ -552,14 +662,16 @@ struct WhiteboardView: View {
     
     // Add basketball overlay
     @ViewBuilder
-    private func addBasketballOverlay(drawingWidth: CGFloat, drawingHeight: CGFloat, offsetX: CGFloat, offsetY: CGFloat) -> some View {
+    private func addBasketballOverlay() -> some View {
         ZStack {
+            // Semi-transparent background
             Color.black.opacity(0.3)
                 .edgesIgnoringSafeArea(.all)
-                .onTapGesture {
+                .onTapGesture { // Tap outside the gesture area to cancel
                     isAddingBasketball = false
                 }
             
+            // Informational text
             VStack {
                 Text("Tap within the court to add basketball")
                     .font(.headline)
@@ -571,17 +683,17 @@ struct WhiteboardView: View {
                 
                 Spacer()
             }
+            .allowsHitTesting(false) // Let taps pass through the text area
             
-            Rectangle()
-                .fill(Color.clear)
-                .frame(width: drawingWidth, height: drawingHeight)
-                .offset(x: offsetX, y: offsetY)
-                .contentShape(Rectangle())
+            // Gesture capturing area (fills the parent - the inner ZStack)
+            Color.clear
+                .contentShape(Rectangle()) // Makes the clear color tappable
+                .border(Color.blue, width: 2) // Optional: keep border for debugging
                 .gesture(
                     // Use DragGesture with minimal distance to detect taps
                     DragGesture(minimumDistance: 0)
                         .onEnded { value in
-                            // Get the tap location from the gesture value
+                            // Get the tap location relative to this view (which is the inner ZStack)
                             let tapPosition = value.location
                             addBasketballAt(position: tapPosition)
                             isAddingBasketball = false
@@ -630,21 +742,20 @@ struct WhiteboardView: View {
     }
     
     private func startNewDrawing(at point: CGPoint) {
-        // Get screen and court dimensions for normalization
-        let screenSize = UIScreen.main.bounds.size
-        let (courtWidth, courtHeight) = getCourtDimensions()
+        // Get the drawing boundary for normalization
+        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
         
-        // Adjust the point to make sure it's mapped correctly to the court
-        let adjustedPoint = adjustTouchLocation(point, in: screenSize, courtWidth: courtWidth, courtHeight: courtHeight)
+        // The 'point' is now relative to the inner drawing ZStack. Use it directly.
+        let currentPoint = point
         
-        // Calculate normalized position
-        let normalizedX = (adjustedPoint.x - (screenSize.width - courtWidth) / 2) / courtWidth
-        let normalizedY = (adjustedPoint.y - (screenSize.height - courtHeight) / 2) / courtHeight
+        // Calculate normalized position relative to the drawing area dimensions
+        let normalizedX = currentPoint.x / boundary.width
+        let normalizedY = currentPoint.y / boundary.height
         let normalizedPoint = CGPoint(x: normalizedX, y: normalizedY)
         
-        // Start a new drawing
+        // Start a new drawing path
         var newPath = Path()
-        newPath.move(to: adjustedPoint)
+        newPath.move(to: currentPoint)
         
         // Determine line width based on input type
         let lineWidth = (selectedTool == .arrow) ? 8 : getPencilWidth(for: currentTouchType)
@@ -657,31 +768,30 @@ struct WhiteboardView: View {
             lineWidth: lineWidth,
             type: drawingType,
             style: penStyle,
-            points: [adjustedPoint],
+            points: [currentPoint], // Use direct point
             normalizedPoints: [normalizedPoint]
         )
         
         // Update the indicator position
-        lastTouchLocation = adjustedPoint
+        lastTouchLocation = currentPoint
     }
     
     private func continueDrawing(at point: CGPoint) {
         guard var drawing = currentDrawing else { return }
         
-        // Get screen and court dimensions for normalization
-        let screenSize = UIScreen.main.bounds.size
-        let (courtWidth, courtHeight) = getCourtDimensions()
+        // Get the drawing boundary for normalization
+        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
         
-        // Adjust the point to make sure it's mapped correctly to the court
-        let adjustedPoint = adjustTouchLocation(point, in: screenSize, courtWidth: courtWidth, courtHeight: courtHeight)
-        
-        // Calculate normalized position
-        let normalizedX = (adjustedPoint.x - (screenSize.width - courtWidth) / 2) / courtWidth
-        let normalizedY = (adjustedPoint.y - (screenSize.height - courtHeight) / 2) / courtHeight
+        // The 'point' is now relative to the inner drawing ZStack. Use it directly.
+        let currentPoint = point
+
+        // Calculate normalized position relative to the drawing area dimensions
+        let normalizedX = currentPoint.x / boundary.width
+        let normalizedY = currentPoint.y / boundary.height
         let normalizedPoint = CGPoint(x: normalizedX, y: normalizedY)
         
         // Add the current point to our points array
-        drawing.points.append(adjustedPoint)
+        drawing.points.append(currentPoint) // Use direct point
         drawing.normalizedPoints?.append(normalizedPoint)
         
         // Make sure we have the previous point and the style information
@@ -698,11 +808,11 @@ struct WhiteboardView: View {
             switch penStyle {
             case .normal:
                 // Just add a line to the path
-                path.addLine(to: adjustedPoint)
+                path.addLine(to: currentPoint)
                 
             case .squiggly:
                 // Create squiggly effect
-                let mid = previousPoint.midpoint(to: adjustedPoint)
+                let mid = previousPoint.midpoint(to: currentPoint)
                 let offset = CGPoint(
                     x: (mid.y - previousPoint.y),
                     y: (previousPoint.x - mid.x)
@@ -711,18 +821,18 @@ struct WhiteboardView: View {
                     x: mid.x + offset.x,
                     y: mid.y + offset.y
                 )
-                path.addQuadCurve(to: adjustedPoint, control: controlPoint)
+                path.addQuadCurve(to: currentPoint, control: controlPoint)
                 
             case .zigzag:
                 // Create zigzag effect
-                let distance = previousPoint.distance(to: adjustedPoint)
+                let distance = previousPoint.distance(to: currentPoint)
                 let segments = max(Int(distance / 3), 1)
                 
                 if segments > 1 {
                     // For multiple segments, calculate zigzag points
                     for i in 1...segments {
                         let t = CGFloat(i) / CGFloat(segments)
-                        let point = previousPoint.interpolated(to: adjustedPoint, t: t)
+                        let point = previousPoint.interpolated(to: currentPoint, t: t)
                         let offset: CGFloat = i % 2 == 0 ? 5 : -5
                         
                         let direction = CGVector(dx: point.x - previousPoint.x, dy: point.y - previousPoint.y)
@@ -738,7 +848,7 @@ struct WhiteboardView: View {
                     }
                 } else {
                     // For short distances, just add a line
-                    path.addLine(to: adjustedPoint)
+                    path.addLine(to: currentPoint)
                 }
             }
         } else if drawingType == .arrow {
@@ -751,7 +861,7 @@ struct WhiteboardView: View {
         currentDrawing = drawing
         
         // Update the indicator position
-        lastTouchLocation = adjustedPoint
+        lastTouchLocation = currentPoint // Use direct point
     }
     
     private func handleTouchEnded(touchType: TouchInputType) {
@@ -777,20 +887,20 @@ struct WhiteboardView: View {
             return
         }
         
-        // Calculate court dimensions
-        let (courtWidth, courtHeight) = getCourtDimensions()
-        let screenSize = UIScreen.main.bounds.size
+        // Get the boundary for normalization
+        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
         
-        // Adjust the position to make sure it's mapped correctly to the court
-        let adjustedPosition = adjustTouchLocation(position, in: screenSize, courtWidth: courtWidth, courtHeight: courtHeight)
+        // The 'position' received is already relative to the overlay, which matches the drawing area.
+        // No need to call adjustTouchLocation. Use the position directly.
+        let adjustedPosition = position 
         
-        // Calculate normalized position
-        let normalizedX = (adjustedPosition.x - (screenSize.width - courtWidth) / 2) / courtWidth
-        let normalizedY = (adjustedPosition.y - (screenSize.height - courtHeight) / 2) / courtHeight
+        // Calculate normalized position relative to the drawing area dimensions
+        let normalizedX = adjustedPosition.x / boundary.width
+        let normalizedY = adjustedPosition.y / boundary.height
         
         let newPlayer = PlayerCircle(
-            position: adjustedPosition,
-            number: players.count + 1,
+            position: adjustedPosition, 
+            number: players.count + 1, 
             color: .blue,
             normalizedPosition: CGPoint(x: normalizedX, y: normalizedY)
         )
@@ -806,16 +916,16 @@ struct WhiteboardView: View {
             return
         }
         
-        // Calculate court dimensions
-        let (courtWidth, courtHeight) = getCourtDimensions()
-        let screenSize = UIScreen.main.bounds.size
+        // Get the boundary for normalization
+        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
         
-        // Adjust the position to make sure it's mapped correctly to the court
-        let adjustedPosition = adjustTouchLocation(position, in: screenSize, courtWidth: courtWidth, courtHeight: courtHeight)
+        // The 'position' received is already relative to the overlay, which matches the drawing area.
+        // No need to call adjustTouchLocation. Use the position directly.
+        let adjustedPosition = position
         
-        // Calculate normalized position
-        let normalizedX = (adjustedPosition.x - (screenSize.width - courtWidth) / 2) / courtWidth
-        let normalizedY = (adjustedPosition.y - (screenSize.height - courtHeight) / 2) / courtHeight
+        // Calculate normalized position relative to the drawing area dimensions
+        let normalizedX = adjustedPosition.x / boundary.width
+        let normalizedY = adjustedPosition.y / boundary.height
         
         let newBasketball = BasketballItem(
             position: adjustedPosition,
@@ -836,30 +946,6 @@ struct WhiteboardView: View {
         case .unknown:
             return 12.0  // Increased from 3.0 for better visibility
         }
-    }
-    
-    // Helper function to adjust coordinates for better precision
-    private func adjustTouchLocation(_ location: CGPoint, in geometrySize: CGSize, courtWidth: CGFloat, courtHeight: CGFloat) -> CGPoint {
-        // Get the drawing area dimensions and offset
-        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
-        let (scaledWidth, scaledHeight) = (boundary.width, boundary.height)
-        let (offsetX, offsetY) = (boundary.offsetX, boundary.offsetY)
-        
-        // Calculate the court's position relative to the screen
-        let courtOriginX = (geometrySize.width - scaledWidth) / 2 + offsetX
-        let courtOriginY = (geometrySize.height - 48 - scaledHeight) / 2 + 48 + offsetY
-        
-        // If the touch is within the court bounds, use it directly
-        if location.x >= courtOriginX && location.x <= courtOriginX + scaledWidth &&
-           location.y >= courtOriginY && location.y <= courtOriginY + scaledHeight {
-            return location
-        }
-        
-        // Otherwise, clamp the location to the court bounds
-        let adjustedX = max(courtOriginX, min(courtOriginX + scaledWidth, location.x))
-        let adjustedY = max(courtOriginY, min(courtOriginY + scaledHeight, location.y))
-        
-        return CGPoint(x: adjustedX, y: adjustedY)
     }
 }
 
@@ -975,6 +1061,8 @@ struct PlayerCircleView: View {
                 .foregroundColor(.white)
         }
         .frame(width: 50, height: 50)
+        // Removed position modifier here, handled by parent ZStack
+        // Removed gesture modifier here
     }
 }
 
@@ -1014,11 +1102,13 @@ struct BasketballItem {
 enum DrawingTool: String, CaseIterable {
     case pen
     case arrow
+    case move
     
     var iconName: String {
         switch self {
         case .pen: return "pencil"
         case .arrow: return "arrow.up.right"
+        case .move: return "hand.point.up.left.fill"
         }
     }
 }
@@ -1175,6 +1265,9 @@ struct TouchTypeDetectionView: UIViewRepresentable {
                     return $0.location(in: self)
                 }
             }
+            
+            // Debug log for touch locations
+            print("Touch locations: \(locations)")
             
             // Pass touch type and all locations
             onTouchesChanged?(touchType, locations)
