@@ -15,6 +15,36 @@ enum TouchInputType {
     case unknown
 }
 
+// Drawing boundary struct to control exact positioning
+struct DrawingBoundary {
+    let width: CGFloat
+    let height: CGFloat
+    let offsetX: CGFloat // Horizontal offset from center
+    let offsetY: CGFloat // Vertical offset from center
+    
+    static let fullCourt = DrawingBoundary(
+        width: 1072,
+        height: 638,
+        offsetX: 0,
+        offsetY: -35
+    )
+    
+    static let halfCourt = DrawingBoundary(
+        width: 793,  // Keep doubled width
+        height: 950,  // Reduced from 1200 to better match court
+        offsetX: -46,
+        offsetY: 98  // Reduced from 150 to bring drawing area up by 50pts
+    )
+    
+    func getFrameSize() -> CGSize {
+        return CGSize(width: width, height: height)
+    }
+    
+    func getOffset() -> CGPoint {
+        return CGPoint(x: offsetX, y: offsetY)
+    }
+}
+
 // CourtImageView implementation
 struct CourtImageView: View {
     let courtType: CourtType
@@ -23,28 +53,27 @@ struct CourtImageView: View {
     var body: some View {
         ZStack {
             // White background
-            Color.white
+            Color.black
             
             if courtType == .full {
-                // Full court rotates based on orientation
+                // Full court without rotation code
                 ZStack {
                     // Court image
                     Image("fullcourt")
                         .resizable()
                         .scaledToFit()
-                        .rotationEffect(frame.width > frame.height ? Angle(degrees: 90) : Angle(degrees: 0))
                         .overlay(
                             Rectangle()
                                 .stroke(Color.black, lineWidth: 3)
                                 .allowsHitTesting(false) // The border shouldn't block interaction
                         )
-                        .rotationEffect(frame.width > frame.height ? Angle(degrees: 90) : Angle(degrees: 0))
+                        .rotationEffect(Angle(degrees: 90))
                     
-                    // Border rotates with the court
+                    // Border
                     Rectangle()
                         .stroke(Color.red, lineWidth: 3)
                         .allowsHitTesting(false) // The border shouldn't block interaction
-                        .rotationEffect(frame.width > frame.height ? Angle(degrees: 90) : Angle(degrees: 0))
+                        .rotationEffect(Angle(degrees: 90))
                 }
             } else {
                 // Half court doesn't rotate
@@ -82,7 +111,7 @@ struct DrawingLayer: View {
                 
                 if drawing.type == .arrow {
                     // Draw the arrow
-                    if drawing.points.count >= 2 {
+                    if drawing.points.count >= 5 {
                         let lastPoint = drawing.points.last!
                         let firstPoint = drawing.points.first!
                         let arrowPath = createArrowPath(from: firstPoint, to: lastPoint)
@@ -103,7 +132,7 @@ struct DrawingLayer: View {
                 let path = drawing.path
                 
                 if drawing.type == .arrow {
-                    if drawing.points.count >= 2 {
+                    if drawing.points.count >= 5 {
                         let lastPoint = drawing.points.last!
                         let firstPoint = drawing.points.first!
                         let arrowPath = createArrowPath(from: firstPoint, to: lastPoint)
@@ -153,6 +182,110 @@ struct DrawingLayer: View {
     }
 }
 
+// Add this enum before the WhiteboardView struct
+enum Action {
+    case drawing(Drawing)
+    case basketball(BasketballItem)
+    case player(PlayerCircle)
+}
+
+// First, let's add a new component view to extract the court background
+struct CourtBackgroundView: View {
+    let courtType: CourtType
+    let courtWidth: CGFloat
+    let courtHeight: CGFloat
+    
+    var body: some View {
+        if courtType == .full {
+            Image("fullcourt")
+                .resizable()
+                .scaledToFit()
+                .overlay(
+                    Rectangle()
+                        .stroke(Color.black, lineWidth: 3)
+                        .allowsHitTesting(false)
+                )
+                .rotationEffect(Angle(degrees: 90))
+                .frame(width: courtWidth * 1.65, height: courtHeight * 1.58)
+        } else {
+            Image("halfcourt")
+                .resizable()
+                .scaledToFit()
+                .overlay(
+                    Rectangle()
+                        .stroke(Color.black, lineWidth: 3)
+                        .allowsHitTesting(false)
+                )
+                .frame(width: courtWidth * 0.97, height: courtHeight * 0.97)
+        }
+    }
+}
+
+// Create a component for basketballs display
+struct BasketballsView: View {
+    @Binding var basketballs: [BasketballItem]
+    @Binding var draggedBasketballIndex: Int?
+    @Binding var currentTouchType: TouchInputType
+    
+    var body: some View {
+        ForEach(basketballs.indices, id: \.self) { index in
+            let basketball = basketballs[index]
+            BasketballView(position: basketball.position)
+                .position(x: basketball.position.x, y: basketball.position.y)
+                .gesture(
+                    DragGesture(coordinateSpace: .local)
+                        .onChanged { value in
+                            // Only allow finger drags for basketballs
+                            if currentTouchType != .pencil {
+                                draggedBasketballIndex = index
+                                var updatedBasketball = basketball
+                                updatedBasketball.position = value.location
+                                
+                                // We'll update normalized position in the parent view
+                                basketballs[index] = updatedBasketball
+                            }
+                        }
+                        .onEnded { _ in
+                            draggedBasketballIndex = nil
+                        }
+                )
+        }
+    }
+}
+
+// Create a component for players display
+struct PlayersView: View {
+    @Binding var players: [PlayerCircle]
+    @Binding var draggedPlayerIndex: Int?
+    @Binding var currentTouchType: TouchInputType
+    
+    var body: some View {
+        ForEach(players.indices, id: \.self) { index in
+            let player = players[index]
+            PlayerCircleView(position: player.position, number: player.number, color: player.color)
+                .position(x: player.position.x, y: player.position.y)
+                .gesture(
+                    DragGesture(coordinateSpace: .local)
+                        .onChanged { value in
+                            // Only allow finger drags for players
+                            if currentTouchType != .pencil {
+                                draggedPlayerIndex = index
+                                var updatedPlayer = player
+                                updatedPlayer.position = value.location
+                                
+                                // We'll update normalized position in the parent view
+                                players[index] = updatedPlayer
+                            }
+                        }
+                        .onEnded { _ in
+                            draggedPlayerIndex = nil
+                        }
+                )
+        }
+    }
+}
+
+// Now modify the main WhiteboardView to use these components
 struct WhiteboardView: View {
     let courtType: CourtType
     
@@ -166,35 +299,19 @@ struct WhiteboardView: View {
     @State private var draggedBasketballIndex: Int?
     @State private var isAddingPlayer = false
     @State private var isAddingBasketball = false
-    @State private var isLandscape: Bool = false
     @State private var currentTouchType: TouchInputType = .unknown
     @State private var showPencilIndicator: Bool = false
     @State private var lastTouchLocation: CGPoint = .zero
-    @State private var showDrawingBounds: Bool = false
+    @State private var showPlayerLimitAlert = false
+    @State private var showBasketballLimitAlert = false
+    
+    // Add this new state variable to track all actions
+    @State private var actions: [Action] = []
     
     var body: some View {
         GeometryReader { geometry in
-            let newIsLandscape = geometry.size.width > geometry.size.height
-            
-            // Detect orientation changes
-            Color.clear.onAppear {
-                self.isLandscape = newIsLandscape
-            }
-            .onChange(of: geometry.size) { newValue in
-                if self.isLandscape != newIsLandscape {
-                    self.isLandscape = newIsLandscape
-                    
-                    // Transform coordinates for drawings and objects if this is a full court
-                    if courtType == .full {
-                        transformDrawingsForRotation(width: geometry.size.width, height: geometry.size.height)
-                        transformObjectsForRotation(players: &players, width: geometry.size.width, height: geometry.size.height)
-                        transformObjectsForRotation(basketballs: &basketballs, width: geometry.size.width, height: geometry.size.height)
-                    }
-                }
-            }
-            
             VStack(spacing: 0) {
-                // Fixed toolbar row below navigation bar
+                // Toolbar stays the same
                 ToolbarView(
                     selectedTool: $selectedTool,
                     selectedPenStyle: $selectedPenStyle,
@@ -207,14 +324,28 @@ struct WhiteboardView: View {
                         isAddingPlayer = false
                     },
                     onUndo: {
-                        if !drawings.isEmpty {
-                            drawings.removeLast()
+                        if let lastAction = actions.popLast() {
+                            switch lastAction {
+                            case .drawing:
+                                if !drawings.isEmpty {
+                                    drawings.removeLast()
+                                }
+                            case .basketball:
+                                if !basketballs.isEmpty {
+                                    basketballs.removeLast()
+                                }
+                            case .player:
+                                if !players.isEmpty {
+                                    players.removeLast()
+                                }
+                            }
                         }
                     },
                     onClear: {
                         drawings.removeAll()
                         players.removeAll()
                         basketballs.removeAll()
+                        actions.removeAll()
                     }
                 )
                 .padding(.vertical, 8)
@@ -222,334 +353,240 @@ struct WhiteboardView: View {
                 .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 2)
                 
                 // Main content area
-                ZStack {
-                    // Background color
-                    Color.white.edgesIgnoringSafeArea(.all)
-                    
-                    // Define constants for consistent sizing
-                    // Use a larger scaling factor to match the visible court area better
-                    let courtWidth = courtType == .full && newIsLandscape ? 
-                                    geometry.size.height * 0.95 : geometry.size.width * 0.95
-                    // Use aspect ratio of the court image for better matching
-                    let courtAspectRatio: CGFloat = courtType == .full ? 1.87 : 1.0  // Adjust these based on actual image
-                    let courtHeight = courtType == .full && newIsLandscape ? 
-                                     geometry.size.width * 0.95 : courtWidth / courtAspectRatio
-                    
-                    // For full court, we need to invert the aspect ratio based on orientation
-                    let isCourtRotated = courtType == .full && newIsLandscape
-                    
-                    // Calculate the visible court factors based on orientation
-                    // When the court is rotated, we need to swap width and height factors
-                    let visibleCourtWidthFactor: CGFloat = isCourtRotated ? 0.90 : 0.94
-                    let visibleCourtHeightFactor: CGFloat = isCourtRotated ? 0.94 : 0.90
-                    
-                    // Main drawing area with both court and canvas in a single container
-                    ZStack {
-                        // Background color
-                        Color.white
-                        
-                        // Court image as the background
-                        Group {
-                            if courtType == .full {
-                                Image("fullcourt")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .overlay(
-                                        Rectangle()
-                                            .stroke(Color.black, lineWidth: 3)
-                                            .allowsHitTesting(false)
-                                    )
-                                    .rotationEffect(newIsLandscape ? Angle(degrees: 90) : Angle(degrees: 0))
-                            } else {
-                                // For half court, use the container size directly
-                                Image("halfcourt")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .overlay(
-                                        Rectangle()
-                                            .stroke(Color.black, lineWidth: 3)
-                                            .allowsHitTesting(false)
-                                    )
-                            }
-                        }
-                        .frame(width: courtWidth, height: courtHeight)
-                        
-                        // Drawing layer on top
-                        DrawingLayer(
-                            courtType: courtType,
-                            drawings: $drawings,
-                            currentDrawing: $currentDrawing,
-                            basketballs: $basketballs,
-                            players: $players,
-                            selectedTool: $selectedTool,
-                            selectedPenStyle: $selectedPenStyle,
-                            draggedBasketballIndex: $draggedBasketballIndex,
-                            draggedPlayerIndex: $draggedPlayerIndex
-                        )
-                        .frame(width: courtWidth, height: courtHeight)
-                        
-                        // Touch detection layer - make sure it has the exact same dimensions and position
-                        // as the DrawingLayer for perfect alignment
-                        TouchTypeDetectionView(
-                            onTouchesChanged: { touchType, locations in
-                                if !locations.isEmpty {
-                                    let location = locations.first!
-                                    // Don't update lastTouchLocation immediately, allow adjustment function to handle it
-                                    // That way the visual indicator matches the actual drawing position
-                                    handleTouchChanged(touchType: touchType, location: location)
-                                }
-                            },
-                            onTouchesEnded: { touchType in
-                                handleTouchEnded(touchType: touchType)
-                            }
-                        )
-                        .frame(width: courtWidth, height: courtHeight)
-                        .allowsHitTesting(true)
-                        
-                        // Basketballs - draw at exact locations
-                        ForEach(basketballs.indices, id: \.self) { index in
-                            let basketball = basketballs[index]
-                            BasketballView(position: basketball.position)
-                                .position(x: basketball.position.x, y: basketball.position.y)
-                                .gesture(
-                                    DragGesture(coordinateSpace: .local)
-                                        .onChanged { value in
-                                            // Only allow finger drags for basketballs
-                                            if currentTouchType != .pencil {
-                                                draggedBasketballIndex = index
-                                                var updatedBasketball = basketball
-                                                updatedBasketball.position = value.location
-                                                
-                                                // Update normalized position
-                                                let courtWidth = isLandscape ? geometry.size.height * 0.95 : geometry.size.width * 0.95
-                                                let courtHeight = isLandscape ? geometry.size.width * 0.95 : (geometry.size.height - 48) * 0.95
-                                                
-                                                // Calculate court origin using the consistent method
-                                                let courtOriginX = (geometry.size.width - courtWidth) / 2
-                                                let courtOriginY = (geometry.size.height - 48) / 2
-                                                
-                                                let normalizedX = (value.location.x - courtOriginX) / courtWidth
-                                                let normalizedY = (value.location.y - courtOriginY) / courtHeight
-                                                
-                                                updatedBasketball.normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                                                
-                                                basketballs[index] = updatedBasketball
-                                            }
-                                        }
-                                        .onEnded { _ in
-                                            draggedBasketballIndex = nil
-                                        }
-                                )
-                        }
-                        
-                        // Player circles - draw at exact locations
-                        ForEach(players.indices, id: \.self) { index in
-                            let player = players[index]
-                            PlayerCircleView(position: player.position, number: player.number, color: player.color)
-                                .position(x: player.position.x, y: player.position.y)
-                                .gesture(
-                                    DragGesture(coordinateSpace: .local)
-                                        .onChanged { value in
-                                            // Only allow finger drags for players
-                                            if currentTouchType != .pencil {
-                                                draggedPlayerIndex = index
-                                                var updatedPlayer = player
-                                                updatedPlayer.position = value.location
-                                                
-                                                // Update normalized position
-                                                let courtWidth = isLandscape ? geometry.size.height * 0.95 : geometry.size.width * 0.95
-                                                let courtHeight = isLandscape ? geometry.size.width * 0.95 : (geometry.size.height - 48) * 0.95
-                                                
-                                                // Calculate court origin using the consistent method
-                                                let courtOriginX = (geometry.size.width - courtWidth) / 2
-                                                let courtOriginY = (geometry.size.height - 48) / 2
-                                                
-                                                let normalizedX = (value.location.x - courtOriginX) / courtWidth
-                                                let normalizedY = (value.location.y - courtOriginY) / courtHeight
-                                                
-                                                updatedPlayer.normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                                                
-                                                players[index] = updatedPlayer
-                                            }
-                                        }
-                                        .onEnded { _ in
-                                            draggedPlayerIndex = nil
-                                        }
-                                )
-                        }
-                        
-                        // Pencil indicator (shows when Apple Pencil is detected)
-                        if showPencilIndicator {
-                            Circle()
-                                .fill(Color.blue.opacity(0.3))
-                                .frame(width: 20, height: 20)
-                                .position(lastTouchLocation)
-                        }
-                        
-                        // Debug visualization for drawing boundaries
-                        if showDrawingBounds {
-                            // Calculate the court boundaries to match the actual visible court lines
-                            
-                            // 1. Draw a green boundary to show the image frame
-                            Rectangle()
-                                .stroke(Color.green, lineWidth: 2)
-                                .frame(width: courtWidth, height: courtHeight)
-                                .opacity(0.7)
-                            
-                            // 2. Draw a red boundary to show where we're enforcing drawing limits
-                            // For half court, we'll use a 94% width and 90% height of the image
-                            // For full court, we'll adjust based on orientation
-                            let visibleWidth = courtWidth * visibleCourtWidthFactor
-                            let visibleHeight = courtHeight * visibleCourtHeightFactor
-                            
-                            Rectangle()
-                                .stroke(Color.red, lineWidth: 2)
-                                .frame(width: visibleWidth, height: visibleHeight)
-                                .opacity(0.7)
-                            
-                            // Display orientation information in the debug overlay
-                            Text("Rotated: \(isCourtRotated ? "Yes" : "No")")
-                                .font(.caption)
-                                .foregroundColor(.red)
-                                .background(Color.white.opacity(0.7))
-                                .position(x: courtWidth / 2, y: 20)
-                            
-                            // 3. Draw corner markers for the visible court
-                            let offsetX = (courtWidth - visibleWidth) / 2
-                            let offsetY = (courtHeight - visibleHeight) / 2
-                            
-                            // Show visible drawing area corners
-                            ForEach(0..<4) { corner in
-                                let x = corner % 2 == 0 ? offsetX : courtWidth - offsetX
-                                let y = corner < 2 ? offsetY : courtHeight - offsetY
-                                
-                                Circle()
-                                    .fill(Color.red)
-                                    .frame(width: 10, height: 10)
-                                    .position(x: x, y: y)
-                            }
-                            
-                            // 4. Draw center marker
-                            Circle()
-                                .fill(Color.red)
-                                .frame(width: 10, height: 10)
-                        }
-                    }
-                    .frame(width: courtWidth, height: courtHeight)
-                    .overlay(
-                        Rectangle()
-                            .stroke(Color.blue, lineWidth: 4)
-                            .allowsHitTesting(false)
-                    )
-                    .position(x: geometry.size.width / 2, y: (geometry.size.height - 48) / 2)
-                    
-                    // Debug information overlay
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Court: \(courtType == .full ? "Full" : "Half")")
-                            .font(.caption)
-                            .foregroundColor(.black)
-                        Text("Orientation: \(newIsLandscape ? "Landscape" : "Portrait")")
-                            .font(.caption)
-                            .foregroundColor(.black)
-                        Text("Size: \(Int(courtWidth))×\(Int(courtHeight))")
-                            .font(.caption)
-                            .foregroundColor(.black)
-                        Text("Input: \(currentTouchType == .pencil ? "Apple Pencil" : currentTouchType == .finger ? "Finger" : "Unknown")")
-                            .font(.caption)
-                            .foregroundColor(currentTouchType == .pencil ? .blue : .black)
-                        
-                        // Add toggle for debug visualization
-                        Toggle("Show Boundaries", isOn: $showDrawingBounds)
-                            .font(.caption)
-                            .foregroundColor(.black)
-                    }
-                    .padding(8)
-                    .background(Color.white.opacity(0.8))
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.gray, lineWidth: 1)
-                    )
-                    .padding(10)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    
-                    // Add player button (shows when isAddingPlayer is true)
-                    if isAddingPlayer {
-                        Color.black.opacity(0.3)
-                            .edgesIgnoringSafeArea(.all)
-                            .onTapGesture {
-                                isAddingPlayer = false
-                            }
-                        
-                        VStack {
-                            Text("Tap within the court to add player")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding()
-                                .background(Color.black.opacity(0.7))
-                                .cornerRadius(10)
-                                .padding(.top, 100)
-                            
-                            Spacer()
-                        }
-                        
-                        Rectangle()
-                            .fill(Color.clear)
-                            .frame(width: courtWidth, height: courtHeight)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                TapGesture()
-                                    .onEnded { _ in
-                                        let center = CGPoint(
-                                            x: courtWidth / 2,
-                                            y: courtHeight / 2
-                                        )
-                                        addPlayerAt(position: center)
-                                        isAddingPlayer = false
-                                    }
-                            )
-                    }
-                    
-                    // Add basketball (shows when isAddingBasketball is true)
-                    if isAddingBasketball {
-                        Color.black.opacity(0.3)
-                            .edgesIgnoringSafeArea(.all)
-                            .onTapGesture {
-                                isAddingBasketball = false
-                            }
-                        
-                        VStack {
-                            Text("Tap within the court to add basketball")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding()
-                                .background(Color.black.opacity(0.7))
-                                .cornerRadius(10)
-                                .padding(.top, 100)
-                            
-                            Spacer()
-                        }
-                        
-                        Rectangle()
-                            .fill(Color.clear)
-                            .frame(width: courtWidth, height: courtHeight)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                TapGesture()
-                                    .onEnded { _ in
-                                        let center = CGPoint(
-                                            x: courtWidth / 2,
-                                            y: courtHeight / 2
-                                        )
-                                        addBasketballAt(position: center)
-                                        isAddingBasketball = false
-                                    }
-                            )
-                    }
-                }
+                courtContentView(geometry: geometry)
             }
             .navigationTitle(courtType == .full ? "Full Court" : "Half Court")
             .navigationBarTitleDisplayMode(.inline)
+            .alert("Player Limit Reached", isPresented: $showPlayerLimitAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("You can only have up to 5 players on the court at once.")
+            }
+            .alert("Basketball Limit Reached", isPresented: $showBasketballLimitAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("You can only have one basketball on the court at a time.")
+            }
+        }
+    }
+    
+    // Extract content view to a separate method to reduce complexity
+    @ViewBuilder
+    private func courtContentView(geometry: GeometryProxy) -> some View {
+        ZStack {
+            // Background color
+            Color.white.edgesIgnoringSafeArea(.all)
+            
+            // Define constants for consistent sizing
+            let courtWidth = geometry.size.width * 0.98
+            let courtHeight = (geometry.size.height - 48) * 0.98 // Adjust for toolbar height
+            
+            // Extract drawing dimensions to simplify expressions
+            let drawingWidth = courtType == .full ? DrawingBoundary.fullCourt.width : DrawingBoundary.halfCourt.width
+            let drawingHeight = courtType == .full ? DrawingBoundary.fullCourt.height : DrawingBoundary.halfCourt.height
+            let drawingOffsetX = courtType == .full ? DrawingBoundary.fullCourt.offsetX : DrawingBoundary.halfCourt.offsetX
+            let drawingOffsetY = courtType == .full ? DrawingBoundary.fullCourt.offsetY : DrawingBoundary.halfCourt.offsetY
+            
+            // Main drawing area
+            courtAndDrawingContent(
+                geometry: geometry,
+                courtWidth: courtWidth,
+                courtHeight: courtHeight,
+                drawingWidth: drawingWidth,
+                drawingHeight: drawingHeight,
+                drawingOffsetX: drawingOffsetX,
+                drawingOffsetY: drawingOffsetY
+            )
+            .position(x: geometry.size.width / 2, y: (geometry.size.height - 48) / 2)
+            
+            // Debug info overlay
+            debugOverlay(courtWidth: courtWidth, courtHeight: courtHeight, drawingWidth: drawingWidth, drawingHeight: drawingHeight)
+            
+            // Add player mode overlay
+            if isAddingPlayer {
+                addPlayerOverlay(drawingWidth: drawingWidth, drawingHeight: drawingHeight, offsetX: drawingOffsetX, offsetY: drawingOffsetY)
+            }
+            
+            // Add basketball mode overlay
+            if isAddingBasketball {
+                addBasketballOverlay(drawingWidth: drawingWidth, drawingHeight: drawingHeight, offsetX: drawingOffsetX, offsetY: drawingOffsetY)
+            }
+        }
+    }
+    
+    // Further break down the content
+    @ViewBuilder
+    private func courtAndDrawingContent(geometry: GeometryProxy, courtWidth: CGFloat, courtHeight: CGFloat, 
+                                      drawingWidth: CGFloat, drawingHeight: CGFloat, 
+                                      drawingOffsetX: CGFloat, drawingOffsetY: CGFloat) -> some View {
+        let screenWidth = UIScreen.main.bounds.width
+        let screenHeight = UIScreen.main.bounds.height
+        
+        let containerWidth = courtType == .full ? screenWidth * 0.98 * 1.65 : screenWidth * 0.98 * 0.97
+        let containerHeight = courtType == .full ? (screenHeight - 48) * 0.98 * 1.58 : (screenHeight - 48) * 0.98 * 0.97
+        
+        ZStack {
+            // Court image background
+            CourtBackgroundView(courtType: courtType, courtWidth: courtWidth, courtHeight: courtHeight)
+            
+            // Drawing layer
+            DrawingLayer(
+                courtType: courtType,
+                drawings: $drawings,
+                currentDrawing: $currentDrawing,
+                basketballs: $basketballs,
+                players: $players,
+                selectedTool: $selectedTool,
+                selectedPenStyle: $selectedPenStyle,
+                draggedBasketballIndex: $draggedBasketballIndex,
+                draggedPlayerIndex: $draggedPlayerIndex
+            )
+            .frame(width: drawingWidth, height: drawingHeight)
+            .offset(x: drawingOffsetX, y: drawingOffsetY)
+            
+            // Touch detection
+            TouchTypeDetectionView(
+                onTouchesChanged: { touchType, locations in
+                    if !locations.isEmpty {
+                        let location = locations.first!
+                        handleTouchChanged(touchType: touchType, location: location)
+                    }
+                },
+                onTouchesEnded: { touchType in
+                    handleTouchEnded(touchType: touchType)
+                }
+            )
+            .frame(width: drawingWidth, height: drawingHeight)
+            .offset(x: drawingOffsetX, y: drawingOffsetY)
+            .allowsHitTesting(true)
+            
+            // Basketballs
+            BasketballsView(
+                basketballs: $basketballs,
+                draggedBasketballIndex: $draggedBasketballIndex,
+                currentTouchType: $currentTouchType
+            )
+            
+            // Player circles
+            PlayersView(
+                players: $players,
+                draggedPlayerIndex: $draggedPlayerIndex,
+                currentTouchType: $currentTouchType
+            )
+            
+            // Pencil indicator
+            if showPencilIndicator {
+                Circle()
+                    .fill(Color.blue.opacity(0.3))
+                    .frame(width: 20, height: 20)
+                    .position(lastTouchLocation)
+            }
+        }
+        .frame(width: containerWidth, height: containerHeight)
+    }
+    
+    // Debug overlay
+    @ViewBuilder
+    private func debugOverlay(courtWidth: CGFloat, courtHeight: CGFloat, drawingWidth: CGFloat, drawingHeight: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Court: \(courtType == .full ? "Full" : "Half")")
+                .font(.caption)
+                .foregroundColor(.black)
+            Text("Size: \(Int(drawingWidth))×\(Int(drawingHeight))")
+                .font(.caption)
+                .foregroundColor(.black)
+            Text("Input: \(currentTouchType == .pencil ? "Apple Pencil" : currentTouchType == .finger ? "Finger" : "Unknown")")
+                .font(.caption)
+                .foregroundColor(currentTouchType == .pencil ? .blue : .black)
+        }
+        .padding(8)
+        .background(Color.white.opacity(0.8))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.gray, lineWidth: 1)
+        )
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+    
+    // Add player overlay
+    @ViewBuilder
+    private func addPlayerOverlay(drawingWidth: CGFloat, drawingHeight: CGFloat, offsetX: CGFloat, offsetY: CGFloat) -> some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .edgesIgnoringSafeArea(.all)
+                .onTapGesture {
+                    isAddingPlayer = false
+                }
+            
+            VStack {
+                Text("Tap within the court to add player")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(10)
+                    .padding(.top, 100)
+                
+                Spacer()
+            }
+            
+            Rectangle()
+                .fill(Color.clear)
+                .frame(width: drawingWidth, height: drawingHeight)
+                .offset(x: offsetX, y: offsetY)
+                .contentShape(Rectangle())
+                .gesture(
+                    // Use DragGesture with minimal distance to detect taps
+                    DragGesture(minimumDistance: 0)
+                        .onEnded { value in
+                            // Get the tap location from the gesture value
+                            let tapPosition = value.location
+                            addPlayerAt(position: tapPosition)
+                            isAddingPlayer = false
+                        }
+                )
+        }
+    }
+    
+    // Add basketball overlay
+    @ViewBuilder
+    private func addBasketballOverlay(drawingWidth: CGFloat, drawingHeight: CGFloat, offsetX: CGFloat, offsetY: CGFloat) -> some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .edgesIgnoringSafeArea(.all)
+                .onTapGesture {
+                    isAddingBasketball = false
+                }
+            
+            VStack {
+                Text("Tap within the court to add basketball")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(10)
+                    .padding(.top, 100)
+                
+                Spacer()
+            }
+            
+            Rectangle()
+                .fill(Color.clear)
+                .frame(width: drawingWidth, height: drawingHeight)
+                .offset(x: offsetX, y: offsetY)
+                .contentShape(Rectangle())
+                .gesture(
+                    // Use DragGesture with minimal distance to detect taps
+                    DragGesture(minimumDistance: 0)
+                        .onEnded { value in
+                            // Get the tap location from the gesture value
+                            let tapPosition = value.location
+                            addBasketballAt(position: tapPosition)
+                            isAddingBasketball = false
+                        }
+                )
         }
     }
     
@@ -562,11 +599,6 @@ struct WhiteboardView: View {
         
         // If we're in drawing mode with a pencil, handle drawing
         if touchType == .pencil && (selectedTool == .pen || selectedTool == .arrow) {
-            // Get the actual dimensions using UIScreen for consistency
-            let screenSize = UIScreen.main.bounds.size
-            let courtWidth = isLandscape ? screenSize.height * 0.95 : screenSize.width * 0.95
-            let courtHeight = isLandscape ? screenSize.width * 0.95 : (screenSize.height - 48) * 0.95
-            
             // Use custom DragGesture-like handling since we can't construct DragGesture.Value directly
             if currentDrawing == nil {
                 // Start a new drawing
@@ -578,35 +610,36 @@ struct WhiteboardView: View {
         }
     }
     
+    // Helper function to get dimensions for calculations outside geometry reader
+    private func getCourtDimensions() -> (width: CGFloat, height: CGFloat) {
+        let screenSize = UIScreen.main.bounds.size
+        let courtWidth = screenSize.width * 0.98
+        let courtHeight = (screenSize.height - 48) * 0.98
+        
+        // Return base court dimensions - scaling is applied where needed
+        return (courtWidth, courtHeight)
+    }
+    
+    // Helper function to get scaled dimensions based on court type - using DrawingBoundary values
+    private func getScaledCourtDimensions() -> (width: CGFloat, height: CGFloat) {
+        if courtType == .full {
+            return (DrawingBoundary.fullCourt.width, DrawingBoundary.fullCourt.height)
+        } else {
+            return (DrawingBoundary.halfCourt.width, DrawingBoundary.halfCourt.height)
+        }
+    }
+    
     private func startNewDrawing(at point: CGPoint) {
         // Get screen and court dimensions for normalization
         let screenSize = UIScreen.main.bounds.size
-        let courtWidth = isLandscape ? screenSize.height * 0.95 : screenSize.width * 0.95
-        
-        // Use aspect ratio for consistent height calculation
-        let courtAspectRatio: CGFloat = courtType == .full ? 1.87 : 1.0
-        let courtHeight = isLandscape ? screenSize.width * 0.95 : courtWidth / courtAspectRatio
-        
-        // Determine if the court is rotated (for full court in landscape)
-        let isCourtRotated = courtType == .full && isLandscape
+        let (courtWidth, courtHeight) = getCourtDimensions()
         
         // Adjust the point to make sure it's mapped correctly to the court
         let adjustedPoint = adjustTouchLocation(point, in: screenSize, courtWidth: courtWidth, courtHeight: courtHeight)
         
-        // Calculate visible court area
-        let visibleCourtWidthFactor: CGFloat = isCourtRotated ? 0.90 : 0.94
-        let visibleCourtHeightFactor: CGFloat = isCourtRotated ? 0.94 : 0.90
-        
-        let visibleWidth = courtWidth * visibleCourtWidthFactor
-        let visibleHeight = courtHeight * visibleCourtHeightFactor
-        
-        // Calculate offsets to the visible court boundaries
-        let offsetX = (courtWidth - visibleWidth) / 2
-        let offsetY = (courtHeight - visibleHeight) / 2
-        
-        // Calculate normalized position relative to the visible court area
-        let normalizedX = (adjustedPoint.x - offsetX) / visibleWidth
-        let normalizedY = (adjustedPoint.y - offsetY) / visibleHeight
+        // Calculate normalized position
+        let normalizedX = (adjustedPoint.x - (screenSize.width - courtWidth) / 2) / courtWidth
+        let normalizedY = (adjustedPoint.y - (screenSize.height - courtHeight) / 2) / courtHeight
         let normalizedPoint = CGPoint(x: normalizedX, y: normalizedY)
         
         // Start a new drawing
@@ -614,7 +647,7 @@ struct WhiteboardView: View {
         newPath.move(to: adjustedPoint)
         
         // Determine line width based on input type
-        let lineWidth = (selectedTool == .arrow) ? 5 : getPencilWidth(for: currentTouchType)
+        let lineWidth = (selectedTool == .arrow) ? 8 : getPencilWidth(for: currentTouchType)
         let drawingType: DrawingTool = selectedTool
         let penStyle: PenStyle = selectedPenStyle
         
@@ -637,32 +670,14 @@ struct WhiteboardView: View {
         
         // Get screen and court dimensions for normalization
         let screenSize = UIScreen.main.bounds.size
-        let courtWidth = isLandscape ? screenSize.height * 0.95 : screenSize.width * 0.95
-        
-        // Use aspect ratio for consistent height calculation
-        let courtAspectRatio: CGFloat = courtType == .full ? 1.87 : 1.0
-        let courtHeight = isLandscape ? screenSize.width * 0.95 : courtWidth / courtAspectRatio
-        
-        // Determine if the court is rotated (for full court in landscape)
-        let isCourtRotated = courtType == .full && isLandscape
+        let (courtWidth, courtHeight) = getCourtDimensions()
         
         // Adjust the point to make sure it's mapped correctly to the court
         let adjustedPoint = adjustTouchLocation(point, in: screenSize, courtWidth: courtWidth, courtHeight: courtHeight)
         
-        // Calculate visible court area
-        let visibleCourtWidthFactor: CGFloat = isCourtRotated ? 0.90 : 0.94
-        let visibleCourtHeightFactor: CGFloat = isCourtRotated ? 0.94 : 0.90
-        
-        let visibleWidth = courtWidth * visibleCourtWidthFactor
-        let visibleHeight = courtHeight * visibleCourtHeightFactor
-        
-        // Calculate offsets to the visible court boundaries
-        let offsetX = (courtWidth - visibleWidth) / 2
-        let offsetY = (courtHeight - visibleHeight) / 2
-        
-        // Calculate normalized position relative to the visible court area
-        let normalizedX = (adjustedPoint.x - offsetX) / visibleWidth
-        let normalizedY = (adjustedPoint.y - offsetY) / visibleHeight
+        // Calculate normalized position
+        let normalizedX = (adjustedPoint.x - (screenSize.width - courtWidth) / 2) / courtWidth
+        let normalizedY = (adjustedPoint.y - (screenSize.height - courtHeight) / 2) / courtHeight
         let normalizedPoint = CGPoint(x: normalizedX, y: normalizedY)
         
         // Add the current point to our points array
@@ -689,8 +704,8 @@ struct WhiteboardView: View {
                 // Create squiggly effect
                 let mid = previousPoint.midpoint(to: adjustedPoint)
                 let offset = CGPoint(
-                    x: (mid.y - previousPoint.y) * 0.3,
-                    y: (previousPoint.x - mid.x) * 0.3
+                    x: (mid.y - previousPoint.y),
+                    y: (previousPoint.x - mid.x)
                 )
                 let controlPoint = CGPoint(
                     x: mid.x + offset.x,
@@ -701,7 +716,7 @@ struct WhiteboardView: View {
             case .zigzag:
                 // Create zigzag effect
                 let distance = previousPoint.distance(to: adjustedPoint)
-                let segments = max(Int(distance / 10), 1)
+                let segments = max(Int(distance / 3), 1)
                 
                 if segments > 1 {
                     // For multiple segments, calculate zigzag points
@@ -748,299 +763,101 @@ struct WhiteboardView: View {
             // Add the completed drawing to the collection
             if let drawing = currentDrawing {
                 drawings.append(drawing)
+                // Add to actions array
+                actions.append(.drawing(drawing))
                 currentDrawing = nil
             }
         }
     }
     
     private func addPlayerAt(position: CGPoint) {
-        // Calculate court dimensions
-        let geometry = UIScreen.main.bounds.size
-        let courtWidth = isLandscape ? geometry.height * 0.95 : geometry.width * 0.95
-        let courtHeight = isLandscape ? geometry.width * 0.95 : (geometry.height - 48) * 0.95
+        // Check if we've reached the player limit
+        if players.count >= 5 {
+            showPlayerLimitAlert = true
+            return
+        }
         
-        // Calculate court origin using the consistent method
-        let courtOriginX = (geometry.width - courtWidth) / 2
-        let courtOriginY = (geometry.height - 48) / 2
+        // Calculate court dimensions
+        let (courtWidth, courtHeight) = getCourtDimensions()
+        let screenSize = UIScreen.main.bounds.size
+        
+        // Adjust the position to make sure it's mapped correctly to the court
+        let adjustedPosition = adjustTouchLocation(position, in: screenSize, courtWidth: courtWidth, courtHeight: courtHeight)
         
         // Calculate normalized position
-        let normalizedX = (position.x - courtOriginX) / courtWidth
-        let normalizedY = (position.y - courtOriginY) / courtHeight
+        let normalizedX = (adjustedPosition.x - (screenSize.width - courtWidth) / 2) / courtWidth
+        let normalizedY = (adjustedPosition.y - (screenSize.height - courtHeight) / 2) / courtHeight
         
         let newPlayer = PlayerCircle(
-            position: position,
+            position: adjustedPosition,
             number: players.count + 1,
             color: .blue,
             normalizedPosition: CGPoint(x: normalizedX, y: normalizedY)
         )
         players.append(newPlayer)
+        // Add to actions array
+        actions.append(.player(newPlayer))
     }
     
     private func addBasketballAt(position: CGPoint) {
-        // Calculate court dimensions
-        let geometry = UIScreen.main.bounds.size
-        let courtWidth = isLandscape ? geometry.height * 0.95 : geometry.width * 0.95
-        let courtHeight = isLandscape ? geometry.width * 0.95 : (geometry.height - 48) * 0.95
+        // Check if we've reached the basketball limit (only 1)
+        if basketballs.count >= 1 {
+            showBasketballLimitAlert = true
+            return
+        }
         
-        // Calculate court origin using the consistent method
-        let courtOriginX = (geometry.width - courtWidth) / 2
-        let courtOriginY = (geometry.height - 48) / 2
+        // Calculate court dimensions
+        let (courtWidth, courtHeight) = getCourtDimensions()
+        let screenSize = UIScreen.main.bounds.size
+        
+        // Adjust the position to make sure it's mapped correctly to the court
+        let adjustedPosition = adjustTouchLocation(position, in: screenSize, courtWidth: courtWidth, courtHeight: courtHeight)
         
         // Calculate normalized position
-        let normalizedX = (position.x - courtOriginX) / courtWidth
-        let normalizedY = (position.y - courtOriginY) / courtHeight
+        let normalizedX = (adjustedPosition.x - (screenSize.width - courtWidth) / 2) / courtWidth
+        let normalizedY = (adjustedPosition.y - (screenSize.height - courtHeight) / 2) / courtHeight
         
         let newBasketball = BasketballItem(
-            position: position,
+            position: adjustedPosition,
             normalizedPosition: CGPoint(x: normalizedX, y: normalizedY)
         )
         basketballs.append(newBasketball)
-    }
-    
-    // Transform drawings when rotating
-    private func transformDrawingsForRotation(width: CGFloat, height: CGFloat) {
-        // Only transform for full court
-        if courtType != .full {
-            return
-        }
-        
-        // Calculate current court dimensions
-        let currentCourtWidth = isLandscape ? height * 0.95 : width * 0.95
-        let currentCourtHeight = isLandscape ? width * 0.95 : (height - 48) * 0.95
-        
-        // Calculate current court origin using consistent method
-        let currentCourtOriginX = (width - currentCourtWidth) / 2
-        let currentCourtOriginY = (height - 48) / 2
-        
-        // Calculate new court dimensions after rotation
-        let newCourtWidth = !isLandscape ? height * 0.95 : width * 0.95
-        let newCourtHeight = !isLandscape ? width * 0.95 : (height - 48) * 0.95
-        
-        // Calculate new court origin using consistent method
-        let newCourtOriginX = (width - newCourtWidth) / 2
-        let newCourtOriginY = (height - 48) / 2
-        
-        // Transform all existing drawings
-        for i in 0..<drawings.count {
-            var newPath = Path()
-            var newPoints: [CGPoint] = []
-            var normalizedPoints: [CGPoint] = []
-            
-            // If we already have normalized points, use them for better accuracy
-            if let existingNormalizedPoints = drawings[i].normalizedPoints {
-                normalizedPoints = existingNormalizedPoints
-                
-                // Convert normalized points to new screen coordinates
-                for normalizedPoint in normalizedPoints {
-                    let transformedPoint = CGPoint(
-                        x: normalizedPoint.x * newCourtWidth + (width - newCourtWidth) / 2,
-                        y: normalizedPoint.y * newCourtHeight + (height - newCourtHeight) / 2
-                    )
-                    
-                    newPoints.append(transformedPoint)
-                    
-                    if newPath.isEmpty {
-                        newPath.move(to: transformedPoint)
-                    } else {
-                        newPath.addLine(to: transformedPoint)
-                    }
-                }
-            } else {
-                // Calculate normalized points if we don't have them yet
-                for point in drawings[i].points {
-                    // Normalize the point to court dimensions (0-1 range)
-                    let normalizedX = (point.x - (width - currentCourtWidth) / 2) / currentCourtWidth
-                    let normalizedY = (point.y - (height - currentCourtHeight) / 2) / currentCourtHeight
-                    
-                    // Store the normalized point
-                    normalizedPoints.append(CGPoint(x: normalizedX, y: normalizedY))
-                    
-                    // For rotation, swap coordinates but preserve relative position
-                    let newNormalizedX = normalizedY
-                    let newNormalizedY = 1 - normalizedX
-                    
-                    // Convert back to absolute coordinates for the new orientation
-                    let transformedPoint = CGPoint(
-                        x: newNormalizedX * newCourtWidth + (width - newCourtWidth) / 2,
-                        y: newNormalizedY * newCourtHeight + (height - newCourtHeight) / 2
-                    )
-                    
-                    newPoints.append(transformedPoint)
-                    
-                    if newPath.isEmpty {
-                        newPath.move(to: transformedPoint)
-                    } else {
-                        newPath.addLine(to: transformedPoint)
-                    }
-                }
-            }
-            
-            // Update the drawing with the new path, points and normalized points
-            drawings[i].path = newPath
-            drawings[i].points = newPoints
-            drawings[i].normalizedPoints = normalizedPoints
-        }
-    }
-    
-    // Transform player circles when rotating
-    private func transformObjectsForRotation(players: inout [PlayerCircle], width: CGFloat, height: CGFloat) {
-        // Only transform for full court
-        if courtType != .full {
-            return
-        }
-        
-        // Calculate current court dimensions
-        let currentCourtWidth = isLandscape ? height * 0.95 : width * 0.95
-        let currentCourtHeight = isLandscape ? width * 0.95 : (height - 48) * 0.95
-        
-        // Calculate new court dimensions after rotation
-        let newCourtWidth = !isLandscape ? height * 0.95 : width * 0.95
-        let newCourtHeight = !isLandscape ? width * 0.95 : (height - 48) * 0.95
-        
-        // Transform all player positions
-        for i in 0..<players.count {
-            // If we already have normalized position, use it
-            if let normalizedPosition = players[i].normalizedPosition {
-                // For rotation, swap coordinates but preserve relative position
-                let newNormalizedX = normalizedPosition.y
-                let newNormalizedY = 1 - normalizedPosition.x
-                
-                // Convert back to screen coordinates
-                let transformedPosition = CGPoint(
-                    x: newNormalizedX * newCourtWidth + (width - newCourtWidth) / 2,
-                    y: newNormalizedY * newCourtHeight + (height - newCourtHeight) / 2
-                )
-                
-                players[i].position = transformedPosition
-            } else {
-                // Calculate normalized position relative to the court
-                let position = players[i].position
-                let normalizedX = (position.x - (width - currentCourtWidth) / 2) / currentCourtWidth
-                let normalizedY = (position.y - (height - currentCourtHeight) / 2) / currentCourtHeight
-                
-                // Store the normalized position
-                players[i].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                
-                // For rotation, swap coordinates but preserve relative position
-                let newNormalizedX = normalizedY
-                let newNormalizedY = 1 - normalizedX
-                
-                // Convert back to screen coordinates
-                let transformedPosition = CGPoint(
-                    x: newNormalizedX * newCourtWidth + (width - newCourtWidth) / 2,
-                    y: newNormalizedY * newCourtHeight + (height - newCourtHeight) / 2
-                )
-                
-                players[i].position = transformedPosition
-            }
-        }
-    }
-    
-    // Transform basketballs when rotating
-    private func transformObjectsForRotation(basketballs: inout [BasketballItem], width: CGFloat, height: CGFloat) {
-        // Only transform for full court
-        if courtType != .full {
-            return
-        }
-        
-        // Calculate current court dimensions
-        let currentCourtWidth = isLandscape ? height * 0.95 : width * 0.95
-        let currentCourtHeight = isLandscape ? width * 0.95 : (height - 48) * 0.95
-        
-        // Calculate new court dimensions after rotation
-        let newCourtWidth = !isLandscape ? height * 0.95 : width * 0.95
-        let newCourtHeight = !isLandscape ? width * 0.95 : (height - 48) * 0.95
-        
-        // Transform all basketball positions
-        for i in 0..<basketballs.count {
-            // If we already have normalized position, use it
-            if let normalizedPosition = basketballs[i].normalizedPosition {
-                // For rotation, swap coordinates but preserve relative position
-                let newNormalizedX = normalizedPosition.y
-                let newNormalizedY = 1 - normalizedPosition.x
-                
-                // Convert back to screen coordinates
-                let transformedPosition = CGPoint(
-                    x: newNormalizedX * newCourtWidth + (width - newCourtWidth) / 2,
-                    y: newNormalizedY * newCourtHeight + (height - newCourtHeight) / 2
-                )
-                
-                basketballs[i].position = transformedPosition
-            } else {
-                // Calculate normalized position relative to the court
-                let position = basketballs[i].position
-                let normalizedX = (position.x - (width - currentCourtWidth) / 2) / currentCourtWidth
-                let normalizedY = (position.y - (height - currentCourtHeight) / 2) / currentCourtHeight
-                
-                // Store the normalized position
-                basketballs[i].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                
-                // For rotation, swap coordinates but preserve relative position
-                let newNormalizedX = normalizedY
-                let newNormalizedY = 1 - normalizedX
-                
-                // Convert back to screen coordinates
-                let transformedPosition = CGPoint(
-                    x: newNormalizedX * newCourtWidth + (width - newCourtWidth) / 2,
-                    y: newNormalizedY * newCourtHeight + (height - newCourtHeight) / 2
-                )
-                
-                basketballs[i].position = transformedPosition
-            }
-        }
+        // Add to actions array
+        actions.append(.basketball(newBasketball))
     }
     
     private func getPencilWidth(for touchType: TouchInputType) -> CGFloat {
         // Default widths based on input type
         switch touchType {
         case .pencil:
-            return 2.0  // Thinner line for pencil
+            return 8.0  // Increased from 2.0 for better visibility
         case .finger:
-            return 5.0  // Thicker line for finger
+            return 16.0  // Increased from 5.0 for better visibility
         case .unknown:
-            return 3.0  // Medium for unknown
+            return 12.0  // Increased from 3.0 for better visibility
         }
     }
     
     // Helper function to adjust coordinates for better precision
     private func adjustTouchLocation(_ location: CGPoint, in geometrySize: CGSize, courtWidth: CGFloat, courtHeight: CGFloat) -> CGPoint {
-        // Determine if the court is rotated (for full court in landscape)
-        let isCourtRotated = courtType == .full && isLandscape
+        // Get the drawing area dimensions and offset
+        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+        let (scaledWidth, scaledHeight) = (boundary.width, boundary.height)
+        let (offsetX, offsetY) = (boundary.offsetX, boundary.offsetY)
         
-        // Calculate the visible court area based on the factors we determined, accounting for rotation
-        let visibleCourtWidthFactor: CGFloat = isCourtRotated ? 0.90 : 0.94
-        let visibleCourtHeightFactor: CGFloat = isCourtRotated ? 0.94 : 0.90
+        // Calculate the court's position relative to the screen
+        let courtOriginX = (geometrySize.width - scaledWidth) / 2 + offsetX
+        let courtOriginY = (geometrySize.height - 48 - scaledHeight) / 2 + 48 + offsetY
         
-        let visibleWidth = courtWidth * visibleCourtWidthFactor
-        let visibleHeight = courtHeight * visibleCourtHeightFactor
-        
-        // Calculate offsets to the visible court boundaries
-        let offsetX = (courtWidth - visibleWidth) / 2
-        let offsetY = (courtHeight - visibleHeight) / 2
-        
-        // Convert the touch point to the coordinate space of the court itself
-        // This assumes the touch is already in the ZStack's coordinate space
-        let courtX = location.x
-        let courtY = location.y
-        
-        // Debug by logging the bounds
-        if showDrawingBounds {
-            print("Court size: \(courtWidth) × \(courtHeight)")
-            print("Visible court: \(visibleWidth) × \(visibleHeight)")
-            print("Is court rotated: \(isCourtRotated)")
-            print("Touch location: \(location)")
-            print("Adjusted location in court space: (\(courtX), \(courtY))")
-        }
-        
-        // If the touch is within the visible court bounds, use it directly
-        if courtX >= offsetX && courtX <= courtWidth - offsetX &&
-           courtY >= offsetY && courtY <= courtHeight - offsetY {
+        // If the touch is within the court bounds, use it directly
+        if location.x >= courtOriginX && location.x <= courtOriginX + scaledWidth &&
+           location.y >= courtOriginY && location.y <= courtOriginY + scaledHeight {
             return location
         }
         
-        // Otherwise, clamp the location to the visible court bounds
-        let adjustedX = max(offsetX, min(courtWidth - offsetX, courtX))
-        let adjustedY = max(offsetY, min(courtHeight - offsetY, courtY))
+        // Otherwise, clamp the location to the court bounds
+        let adjustedX = max(courtOriginX, min(courtOriginX + scaledWidth, location.x))
+        let adjustedY = max(courtOriginY, min(courtOriginY + scaledHeight, location.y))
         
         return CGPoint(x: adjustedX, y: adjustedY)
     }
@@ -1362,5 +1179,22 @@ struct TouchTypeDetectionView: UIViewRepresentable {
             // Pass touch type and all locations
             onTouchesChanged?(touchType, locations)
         }
+    }
+}
+
+// Simplified ScaledCourtContainer
+struct ScaledCourtContainer: View {
+    let courtType: CourtType
+    let content: AnyView
+    
+    var body: some View {
+        let screenWidth = UIScreen.main.bounds.width
+        let screenHeight = UIScreen.main.bounds.height
+        
+        let width = courtType == .full ? screenWidth * 0.98 * 1.65 : screenWidth * 0.98 * 0.97
+        let height = courtType == .full ? (screenHeight - 48) * 0.98 * 1.58 : (screenHeight - 48) * 0.98 * 0.97
+        
+        return content
+            .frame(width: width, height: height)
     }
 } 

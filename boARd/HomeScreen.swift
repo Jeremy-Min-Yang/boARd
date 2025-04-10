@@ -22,7 +22,7 @@ struct HomeScreen: View {
                     Spacer()
                     
                     // Empty state message
-                    Text("Create a new whiteboard session")
+                    Text("Create a new whiteboard.")
                         .foregroundColor(.gray)
                     
                     Spacer()
@@ -150,4 +150,4 @@ struct HomeScreen_Previews: PreviewProvider {
     static var previews: some View {
         HomeScreen()
     }
-} 
+}
