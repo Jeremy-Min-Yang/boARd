@@ -102,6 +102,8 @@ struct DrawingLayer: View {
     @Binding var selectedPenStyle: PenStyle
     @Binding var draggedBasketballIndex: Int?
     @Binding var draggedPlayerIndex: Int?
+    @Binding var isPathAssignmentMode: Bool
+    @Binding var selectedDrawingId: UUID?
     
     var body: some View {
         Canvas { context, size in
@@ -109,19 +111,29 @@ struct DrawingLayer: View {
             for drawing in drawings {
                 let path = drawing.path
                 
+                // Determine drawing color
+                var drawingColor = drawing.color
+                
+                // Highlight selected path when in assignment mode
+                if isPathAssignmentMode && selectedDrawingId == drawing.id {
+                    // Selected path in assignment mode gets highlighted in green
+                    drawingColor = .green
+                }
+                // All other paths use their default color (black)
+                
                 if drawing.type == .arrow {
                     // Draw the arrow
                     if drawing.points.count >= 5 {
                         let lastPoint = drawing.points.last!
                         let firstPoint = drawing.points.first!
                         let arrowPath = createArrowPath(from: firstPoint, to: lastPoint)
-                        context.stroke(arrowPath, with: .color(drawing.color), lineWidth: drawing.lineWidth)
+                        context.stroke(arrowPath, with: .color(drawingColor), lineWidth: drawing.lineWidth)
                     }
                 } else {
                     // Draw pen strokes
                     context.stroke(
                         path,
-                        with: .color(drawing.color),
+                        with: .color(drawingColor),
                         style: StrokeStyle(lineWidth: drawing.lineWidth, lineCap: .round, lineJoin: .round)
                     )
                 }
@@ -147,7 +159,57 @@ struct DrawingLayer: View {
                 }
             }
         }
-        .allowsHitTesting(true)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                .onEnded { value in
+                    // Only handle taps in path assignment mode
+                    if isPathAssignmentMode {
+                        let location = value.location
+                        handlePathSelection(at: location)
+                    }
+                }
+        )
+    }
+    
+    private func handlePathSelection(at location: CGPoint) {
+        // Only proceed if we have drawings
+        guard !drawings.isEmpty else { return }
+        
+        print("Tap location: \(location)")
+        
+        // Check if any drawing was tapped
+        var tappedDrawingId: UUID? = nil
+        var closestDistance: CGFloat = 20 // Maximum distance to consider a hit
+        
+        // Check each drawing to see if it was tapped
+        for drawing in drawings {
+            for point in drawing.points {
+                let distance = hypot(location.x - point.x, location.y - point.y)
+                
+                if distance < closestDistance {
+                    closestDistance = distance
+                    tappedDrawingId = drawing.id
+                }
+            }
+        }
+        
+        if let tappedId = tappedDrawingId {
+            // A drawing was tapped
+            selectedDrawingId = tappedId
+            print("Selected path by tap: \(tappedId)")
+        } else if selectedDrawingId == nil && !drawings.isEmpty {
+            // No drawing tapped and none selected, select the first one
+            selectedDrawingId = drawings[0].id
+            print("No path tapped, defaulting to first: \(drawings[0].id)")
+        } else {
+            // No drawing tapped but one is selected, cycle to next
+            if let currentIndex = drawings.firstIndex(where: { $0.id == selectedDrawingId }) {
+                let nextIndex = (currentIndex + 1) % drawings.count
+                selectedDrawingId = drawings[nextIndex].id
+                print("Cycling to next path: \(drawings[nextIndex].id)")
+            }
+        }
     }
     
     private func createArrowPath(from start: CGPoint, to end: CGPoint) -> Path {
@@ -229,63 +291,36 @@ struct BasketballsView: View {
     @Binding var currentTouchType: TouchInputType
     @Binding var selectedTool: DrawingTool
     
-    // Define the size of the basketball for hit testing
-    private let basketballSize: CGFloat = 40 
-
     var body: some View {
-        ZStack { // Use a ZStack as the container for the gesture
+        ZStack {
             ForEach(basketballs.indices, id: \.self) { index in
                 let basketball = basketballs[index]
+                
                 BasketballView(position: basketball.position)
-                    .position(x: basketball.position.x, y: basketball.position.y)
-                    // Removed gesture from individual item
+                    .position(basketball.position)
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                            .onChanged { value in
+                                // Only move if we're using the move tool
+                                if selectedTool == .move {
+                                    // Set the index and directly update position with the current location
+                                    draggedBasketballIndex = index
+                                    basketballs[index].position = value.location
+                                }
+                            }
+                            .onEnded { value in
+                                if selectedTool == .move, let index = draggedBasketballIndex {
+                                    // Update normalized position
+                                    let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+                                    let normalizedX = value.location.x / boundary.width
+                                    let normalizedY = value.location.y / boundary.height
+                                    basketballs[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
+                                }
+                                draggedBasketballIndex = nil
+                            }
+                    )
             }
         }
-        .contentShape(Rectangle()) // Ensure the ZStack can receive gestures
-        .gesture(
-            DragGesture(minimumDistance: 1, coordinateSpace: .local) // Use local space of ZStack
-                .onChanged { value in
-                    // Only move if the correct tool is selected and it's not a pencil
-                    guard selectedTool == .move, currentTouchType != .pencil else { return }
-                    
-                    // If not currently dragging, find the item under the start location
-                    if draggedBasketballIndex == nil {
-                        draggedBasketballIndex = basketballs.indices.first { index in
-                            let item = basketballs[index]
-                            // Calculate the frame of the item for hit testing
-                            let itemFrame = CGRect(x: item.position.x - basketballSize / 2,
-                                                   y: item.position.y - basketballSize / 2,
-                                                   width: basketballSize,
-                                                   height: basketballSize)
-                            return itemFrame.contains(value.startLocation)
-                        }
-                    }
-                    
-                    // If an item is being dragged, update its position
-                    if let index = draggedBasketballIndex {
-                        basketballs[index].position = value.location
-                    }
-                }
-                .onEnded { value in
-                    if let index = draggedBasketballIndex {
-                        // Update normalized position on drag end
-                        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
-                        let finalPosition = value.location
-                        // Clamp position to boundary before normalizing
-                        let clampedX = max(0, min(boundary.width, finalPosition.x))
-                        let clampedY = max(0, min(boundary.height, finalPosition.y))
-                        let clampedPosition = CGPoint(x: clampedX, y: clampedY)
-                        
-                        basketballs[index].position = clampedPosition // Update position with clamped value
-                        
-                        let normalizedX = clampedPosition.x / boundary.width
-                        let normalizedY = clampedPosition.y / boundary.height
-                        basketballs[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                    }
-                    // Reset the dragged index regardless of whether an item was found
-                    draggedBasketballIndex = nil 
-                }
-        )
     }
 }
 
@@ -296,64 +331,66 @@ struct PlayersView: View {
     @Binding var draggedPlayerIndex: Int?
     @Binding var currentTouchType: TouchInputType
     @Binding var selectedTool: DrawingTool
+    @Binding var isPathAssignmentMode: Bool
+    @Binding var selectedDrawingId: UUID?
+    @Binding var drawings: [Drawing]
+    var onAssignPath: (UUID, Int) -> Void
     
-    // Define the size of the player circle for hit testing
-    private let playerSize: CGFloat = 50
-
+    // Helper function to get color for player - simplified to a single color
+    private func getPlayerColor(_ player: PlayerCircle) -> Color {
+        return .blue
+    }
+    
     var body: some View {
-        ZStack { // Use a ZStack as the container for the gesture
+        ZStack {
             ForEach(players.indices, id: \.self) { index in
                 let player = players[index]
-                PlayerCircleView(position: player.position, number: player.number, color: player.color)
-                    .position(x: player.position.x, y: player.position.y)
-                    // Removed gesture from individual item
+                let playerColor = getPlayerColor(player)
+                
+                ZStack {
+                    // Visual indicator for assigned paths - now using a consistent color
+                    Circle()
+                        .stroke(Color.blue, lineWidth: 2)
+                        .frame(width: 54, height: 54)
+                        .opacity(player.assignedPathId != nil ? 1 : 0)
+                    
+                    // The actual player view
+                    PlayerCircleView(position: player.position, number: player.number, color: playerColor)
+                }
+                .position(player.position)
+                .contentShape(Circle().size(CGSize(width: 60, height: 60))) // Larger hit area
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                        .onChanged { value in
+                            // Only move if we're using the move tool and not in assignment mode
+                            if selectedTool == .move && !isPathAssignmentMode {
+                                // Set the index and directly update position with the current location
+                                draggedPlayerIndex = index
+                                players[index].position = value.location
+                            }
+                        }
+                        .onEnded { value in
+                            if selectedTool == .move && !isPathAssignmentMode, let index = draggedPlayerIndex {
+                                // Update normalized position
+                                let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+                                let normalizedX = value.location.x / boundary.width
+                                let normalizedY = value.location.y / boundary.height
+                                players[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
+                            }
+                            draggedPlayerIndex = nil
+                        }
+                )
+                .onTapGesture {
+                    print("Player \(index) tapped, assignment mode: \(isPathAssignmentMode), selected path: \(String(describing: selectedDrawingId))")
+                    
+                    // Handle path assignment
+                    if isPathAssignmentMode, let drawingId = selectedDrawingId {
+                        print("Assigning path \(drawingId) to player \(index)")
+                        onAssignPath(drawingId, index)
+                    }
+                }
             }
         }
-        .contentShape(Rectangle()) // Ensure the ZStack can receive gestures
-        .gesture(
-            DragGesture(minimumDistance: 1, coordinateSpace: .local) // Use local space of ZStack
-                .onChanged { value in
-                    // Only move if the correct tool is selected and it's not a pencil
-                    guard selectedTool == .move, currentTouchType != .pencil else { return }
-                    
-                    // If not currently dragging, find the item under the start location
-                    if draggedPlayerIndex == nil {
-                        draggedPlayerIndex = players.indices.first { index in
-                            let item = players[index]
-                            // Calculate the frame of the item for hit testing
-                            let itemFrame = CGRect(x: item.position.x - playerSize / 2,
-                                                   y: item.position.y - playerSize / 2,
-                                                   width: playerSize,
-                                                   height: playerSize)
-                            return itemFrame.contains(value.startLocation)
-                        }
-                    }
-                    
-                    // If an item is being dragged, update its position
-                    if let index = draggedPlayerIndex {
-                        players[index].position = value.location
-                    }
-                }
-                .onEnded { value in
-                    if let index = draggedPlayerIndex {
-                        // Update normalized position on drag end
-                        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
-                        let finalPosition = value.location
-                        // Clamp position to boundary before normalizing
-                        let clampedX = max(0, min(boundary.width, finalPosition.x))
-                        let clampedY = max(0, min(boundary.height, finalPosition.y))
-                        let clampedPosition = CGPoint(x: clampedX, y: clampedY)
-                        
-                        players[index].position = clampedPosition // Update position with clamped value
-                        
-                        let normalizedX = clampedPosition.x / boundary.width
-                        let normalizedY = clampedPosition.y / boundary.height
-                        players[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                    }
-                    // Reset the dragged index regardless of whether an item was found
-                    draggedPlayerIndex = nil
-                }
-        )
     }
 }
 
@@ -378,8 +415,20 @@ struct WhiteboardView: View {
     @State private var showBasketballLimitAlert = false
     @State private var showClearConfirmation = false
     
+    // Animation/Playback state
+    @State private var playbackState: PlaybackState = .stopped
+    @State private var isPathAssignmentMode: Bool = false
+    @State private var selectedDrawingId: UUID?
+    @State private var animationSpeed: Double = 2.0  // Animation speed (seconds)
+    @State private var animationPaths: [AnimationPath] = []
+    @State private var originalPlayerPositions: [CGPoint] = []  // To reset after animation
+    @State private var originalBasketballPositions: [CGPoint] = []  // To reset after animation
+    
     // Add this new state variable to track all actions
     @State private var actions: [Action] = []
+    
+    // Add this new state variable to track the previous tool
+    @State private var previousTool: DrawingTool?
     
     var body: some View {
         GeometryReader { geometry in
@@ -388,6 +437,8 @@ struct WhiteboardView: View {
                 ToolbarView(
                     selectedTool: $selectedTool,
                     selectedPenStyle: $selectedPenStyle,
+                    playbackState: $playbackState,
+                    isPathAssignmentMode: $isPathAssignmentMode,
                     onAddPlayer: {
                         isAddingPlayer = true
                         isAddingBasketball = false
@@ -417,6 +468,15 @@ struct WhiteboardView: View {
                     onClear: {
                         // Set the state to show the confirmation alert
                         showClearConfirmation = true
+                    },
+                    onPlayAnimation: {
+                        startAnimation()
+                    },
+                    onStopAnimation: {
+                        stopAnimation()
+                    },
+                    onAssignPath: {
+                        togglePathAssignmentMode()
                     }
                 )
                 .padding(.vertical, 8)
@@ -486,6 +546,11 @@ struct WhiteboardView: View {
             // Debug info overlay
             debugOverlay(courtWidth: courtWidth, courtHeight: courtHeight, drawingWidth: drawingWidth, drawingHeight: drawingHeight)
             
+            // Path assignment mode overlay
+            if isPathAssignmentMode {
+                pathAssignmentOverlay()
+            }
+            
             // Add player mode overlay
             if isAddingPlayer {
                 addPlayerOverlay()
@@ -520,28 +585,28 @@ struct WhiteboardView: View {
                     courtType: courtType,
                     drawings: $drawings,
                     currentDrawing: $currentDrawing,
-                    basketballs: $basketballs, // Pass bindings down if needed by DrawingLayer itself
+                    basketballs: $basketballs,
                     players: $players,
                     selectedTool: $selectedTool,
                     selectedPenStyle: $selectedPenStyle,
-                    draggedBasketballIndex: $draggedBasketballIndex, // Pass bindings down
-                    draggedPlayerIndex: $draggedPlayerIndex // Pass bindings down
+                    draggedBasketballIndex: $draggedBasketballIndex,
+                    draggedPlayerIndex: $draggedPlayerIndex,
+                    isPathAssignmentMode: $isPathAssignmentMode,
+                    selectedDrawingId: $selectedDrawingId
                 )
                 // No frame or offset here - it inherits from parent ZStack
 
                 // Touch detection - Sized to match drawing area
                 TouchTypeDetectionView(
                     onTouchesChanged: { touchType, locations in
-                        if !locations.isEmpty {
-                            let location = locations.first!
-                            handleTouchChanged(touchType: touchType, location: location)
-                        }
+                        handleTouchChanged(touchType: touchType, locations: locations)
                     },
                     onTouchesEnded: { touchType in
                         handleTouchEnded(touchType: touchType)
                     }
                 )
-                .allowsHitTesting(true) // Capture touches for this area
+                // Disable hit testing when move tool is selected to allow dragging underneath
+                .allowsHitTesting(selectedTool != .move)
                 // No frame or offset here
 
                 // Basketballs - Positioned within this ZStack's coordinate space
@@ -552,6 +617,7 @@ struct WhiteboardView: View {
                     currentTouchType: $currentTouchType,
                     selectedTool: $selectedTool
                 )
+                .zIndex(selectedTool == .move ? 1 : 0) // Higher z-index when in move mode
                 // No frame or offset here
 
                 // Player circles - Positioned within this ZStack's coordinate space
@@ -560,8 +626,13 @@ struct WhiteboardView: View {
                     players: $players,
                     draggedPlayerIndex: $draggedPlayerIndex,
                     currentTouchType: $currentTouchType,
-                    selectedTool: $selectedTool
+                    selectedTool: $selectedTool,
+                    isPathAssignmentMode: $isPathAssignmentMode,
+                    selectedDrawingId: $selectedDrawingId,
+                    drawings: $drawings,
+                    onAssignPath: assignPathToPlayer
                 )
+                .zIndex(selectedTool == .move ? 1 : 0) // Higher z-index when in move mode
                 // No frame or offset here
 
                 // Pencil indicator - Positioned within this ZStack's coordinate space
@@ -573,16 +644,34 @@ struct WhiteboardView: View {
                         .allowsHitTesting(false) // Don't let indicator block touches
                 }
                 
-                // --- Add Overlays Here --- 
-                if isAddingPlayer {
-                    addPlayerOverlay()
+                // Add a global tap gesture recognizer that checks if a player was tapped
+                if isPathAssignmentMode, let selectedPath = selectedDrawingId {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .gesture(
+                            // Use DragGesture with minimumDistance of 0 to simulate a tap
+                            DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                                .onEnded { value in
+                                    let location = value.location
+                                    // Check if any player was tapped
+                                    for (index, player) in players.enumerated() {
+                                        let playerFrame = CGRect(
+                                            x: player.position.x - 30, 
+                                            y: player.position.y - 30,
+                                            width: 60, 
+                                            height: 60
+                                        )
+                                        
+                                        if playerFrame.contains(location) {
+                                            print("Player tapped via global recognizer: \(index)")
+                                            assignPathToPlayer(drawingId: selectedPath, playerIndex: index)
+                                            break
+                                        }
+                                    }
+                                }
+                        )
+                        .zIndex(100) // Ensure this is on top
                 }
-            
-                if isAddingBasketball {
-                    addBasketballOverlay()
-                }
-                // --- End Overlays --- 
-                
             }
             .frame(width: drawingWidth, height: drawingHeight) // Apply frame to inner ZStack
             .offset(x: drawingOffsetX, y: drawingOffsetY) // Apply offset to inner ZStack
@@ -616,6 +705,90 @@ struct WhiteboardView: View {
         )
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+    
+    // Add a helper method to exit path assignment mode
+    private func exitPathAssignmentMode() {
+        isPathAssignmentMode = false
+        selectedDrawingId = nil
+        
+        // Restore previous tool when exiting assignment mode
+        if let prevTool = previousTool {
+            selectedTool = prevTool
+        }
+    }
+    
+    // Add a clear visual indicator for path assignment mode
+    @ViewBuilder
+    private func pathAssignmentOverlay() -> some View {
+        VStack {
+            // Status banner at top
+            HStack {
+                Image(systemName: "arrow.triangle.pull")
+                    .foregroundColor(.white)
+                
+                Text("PATH ASSIGNMENT MODE")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                
+                if selectedDrawingId != nil {
+                    Text("• PATH SELECTED")
+                        .font(.headline)
+                        .foregroundColor(.green)
+                } else {
+                    Text("• TAP A PATH")
+                        .font(.headline)
+                        .foregroundColor(.yellow)
+                }
+                
+                Spacer()
+                
+                Button(action: {
+                    exitPathAssignmentMode()
+                }) {
+                    Text("Done")
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .cornerRadius(8)
+                }
+            }
+            .padding()
+            .background(Color.black.opacity(0.7))
+            
+            Spacer()
+            
+            // Show assigned path count in the middle of the screen
+            if animationPaths.count > 0 {
+                Text("\(animationPaths.count) paths assigned")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(10)
+            }
+            
+            Spacer()
+            
+            // Instructions at the bottom
+            if selectedDrawingId != nil {
+                Text("Now tap a player to assign this path")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(10)
+            } else {
+                Text("Tap on a drawing to select it")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(10)
+            }
+        }
+        .padding(.bottom, 20)
     }
     
     // Add player overlay
@@ -702,22 +875,28 @@ struct WhiteboardView: View {
         }
     }
     
-    private func handleTouchChanged(touchType: TouchInputType, location: CGPoint) {
+    private func handleTouchChanged(touchType: TouchInputType, locations: [CGPoint]) {
         // Update current touch type
         currentTouchType = touchType
         
         // If it's a pencil, show the indicator
         showPencilIndicator = (touchType == .pencil)
         
-        // If we're in drawing mode with a pencil, handle drawing
-        if touchType == .pencil && (selectedTool == .pen || selectedTool == .arrow) {
-            // Use custom DragGesture-like handling since we can't construct DragGesture.Value directly
-            if currentDrawing == nil {
-                // Start a new drawing
-                self.startNewDrawing(at: location)
-            } else {
-                // Continue existing drawing
-                self.continueDrawing(at: location)
+        // If we're in drawing mode with a pencil, and not currently dragging something, handle drawing
+        if touchType == .pencil && 
+           (selectedTool == .pen || selectedTool == .arrow) && 
+           draggedPlayerIndex == nil && 
+           draggedBasketballIndex == nil &&
+           !isPathAssignmentMode { // Prevent drawing in path assignment mode
+            // Process each location received (includes coalesced touches)
+            for location in locations {
+                if currentDrawing == nil {
+                    // Start a new drawing with the first point
+                    self.startNewDrawing(at: location)
+                } else {
+                    // Continue existing drawing with subsequent points
+                    self.continueDrawing(at: location)
+                }
             }
         }
     }
@@ -764,7 +943,7 @@ struct WhiteboardView: View {
         
         currentDrawing = Drawing(
             path: newPath,
-            color: .blue,
+            color: .black,
             lineWidth: lineWidth,
             type: drawingType,
             style: penStyle,
@@ -865,6 +1044,8 @@ struct WhiteboardView: View {
     }
     
     private func handleTouchEnded(touchType: TouchInputType) {
+        print("WhiteboardView handleTouchEnded - TouchType: \(touchType), CurrentDrawing Exists: \(currentDrawing != nil)")
+
         // Hide pencil indicator
         showPencilIndicator = false
         
@@ -901,7 +1082,6 @@ struct WhiteboardView: View {
         let newPlayer = PlayerCircle(
             position: adjustedPosition, 
             number: players.count + 1, 
-            color: .blue,
             normalizedPosition: CGPoint(x: normalizedX, y: normalizedY)
         )
         players.append(newPlayer)
@@ -947,15 +1127,187 @@ struct WhiteboardView: View {
             return 12.0  // Increased from 3.0 for better visibility
         }
     }
+    
+    // Add these functions for animation control
+    private func togglePathAssignmentMode() {
+        isPathAssignmentMode.toggle()
+        selectedDrawingId = nil // Reset selection
+        
+        // Automatically switch to move tool when entering path assignment mode
+        // This prevents drawing while assigning paths
+        if isPathAssignmentMode {
+            // Store the previous tool to restore later
+            previousTool = selectedTool
+            selectedTool = .move
+        } else {
+            // Restore previous tool when exiting assignment mode
+            if let prevTool = previousTool {
+                selectedTool = prevTool
+            }
+        }
+    }
+    
+    private func assignPathToPlayer(drawingId: UUID, playerIndex: Int) {
+        print("ASSIGNING PATH: \(drawingId) to player \(playerIndex)")
+        
+        // Ensure player index is valid
+        guard playerIndex >= 0 && playerIndex < players.count else {
+            print("Invalid player index: \(playerIndex)")
+            return
+        }
+        
+        // Associate the drawing with the player
+        players[playerIndex].assignedPathId = drawingId
+        
+        // Mark the drawing as assigned
+        if let index = drawings.firstIndex(where: { $0.id == drawingId }) {
+            drawings[index].isAssignedToPlayer = true
+            
+            // Create animation path
+            let animationPath = AnimationPath(
+                drawingId: drawingId,
+                playerIndex: playerIndex,
+                path: drawings[index].points
+            )
+            
+            print("Created animation path with \(animationPath.path.count) points")
+            
+            // Add or update animation path
+            if let existingIndex = animationPaths.firstIndex(where: { $0.playerIndex == playerIndex }) {
+                animationPaths[existingIndex] = animationPath
+                print("Updated existing animation path for player \(playerIndex)")
+            } else {
+                animationPaths.append(animationPath)
+                print("Added new animation path for player \(playerIndex)")
+            }
+        } else {
+            print("Could not find drawing with ID: \(drawingId)")
+        }
+        
+        // Reset selection but STAY in path assignment mode
+        selectedDrawingId = nil
+        
+        print("Path assigned to Player \(playerIndex+1). Select another path or exit assignment mode when done.")
+    }
+    
+    private func startAnimation() {
+        // If no paths assigned, do nothing
+        if animationPaths.isEmpty {
+            print("No animation paths to play")
+            return
+        }
+        
+        print("Starting animation with \(animationPaths.count) paths")
+        
+        // Store original positions for reset
+        originalPlayerPositions = players.map { $0.position }
+        originalBasketballPositions = basketballs.map { $0.position }
+        
+        // Set playback state
+        playbackState = .playing
+        
+        // Animate each player along their assigned path
+        for animPath in animationPaths {
+            print("Animating player \(animPath.playerIndex) along path with \(animPath.path.count) points")
+            animatePlayer(at: animPath.playerIndex, along: animPath.path)
+        }
+    }
+    
+    private func animatePlayer(at index: Int, along path: [CGPoint]) {
+        guard index < players.count, !path.isEmpty else {
+            print("Invalid player index or empty path")
+            return
+        }
+        
+        // Only animate if points are sufficient
+        if path.count < 2 {
+            print("Path has too few points to animate")
+            return
+        }
+        
+        // Get the start position
+        let startPosition = path.first!
+        players[index].position = startPosition
+        
+        // Animate through the path
+        let totalDuration = animationSpeed
+        let pointCount = path.count
+        
+        // Animate through each segment with smoother animation
+        DispatchQueue.main.async {
+            // Use withAnimation for the entire sequence
+            withAnimation(.linear(duration: totalDuration)) {
+                // Create a sequence of animations
+                var delay: Double = 0
+                
+                for i in 1..<path.count {
+                    let segmentDuration = totalDuration / Double(pointCount - 1)
+                    
+                    // Schedule each position update
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in
+                        guard playbackState == .playing else { return }
+                        
+                        // Update the position
+                        players[index].position = path[i]
+                        
+                        // Check if this is the last segment and the last player
+                        if i == path.count - 1 {
+                            // Check if all animations are complete
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [self] in
+                                guard playbackState == .playing else { return }
+                                
+                                // Check if this was the last player to finish
+                                let allPlayersComplete = true // This will need more logic if animations have different durations
+                                
+                                if allPlayersComplete {
+                                    print("All animations completed")
+                                    playbackState = .stopped
+                                }
+                            }
+                        }
+                    }
+                    
+                    delay += segmentDuration
+                }
+            }
+        }
+    }
+    
+    private func stopAnimation() {
+        print("Stopping animation")
+        
+        // Change state immediately to cancel ongoing animations
+        playbackState = .stopped
+        
+        // Reset to original positions
+        if !originalPlayerPositions.isEmpty {
+            for i in 0..<min(players.count, originalPlayerPositions.count) {
+                players[i].position = originalPlayerPositions[i]
+            }
+        }
+        
+        if !originalBasketballPositions.isEmpty {
+            for i in 0..<min(basketballs.count, originalBasketballPositions.count) {
+                basketballs[i].position = originalBasketballPositions[i]
+            }
+        }
+        
+        print("Animation stopped, positions reset")
+    }
 }
 
 struct ToolbarView: View {
     @Binding var selectedTool: DrawingTool
     @Binding var selectedPenStyle: PenStyle
+    @Binding var playbackState: PlaybackState
+    @Binding var isPathAssignmentMode: Bool
     var onAddPlayer: () -> Void
     var onAddBasketball: () -> Void
     var onUndo: () -> Void
     var onClear: () -> Void
+    var onPlayAnimation: () -> Void
+    var onStopAnimation: () -> Void
+    var onAssignPath: () -> Void
     
     var body: some View {
         GeometryReader { geometry in
@@ -1018,6 +1370,35 @@ struct ToolbarView: View {
                     Divider()
                         .frame(height: 24)
                     
+                    // Animation controls
+                    Button(action: onAssignPath) {
+                        Image(systemName: "arrow.triangle.pull")
+                            .font(.title3)
+                            .foregroundColor(isPathAssignmentMode ? .blue : .gray)
+                            .frame(width: 36, height: 36)
+                            .background(isPathAssignmentMode ? Color.blue.opacity(0.2) : Color.clear)
+                            .cornerRadius(8)
+                    }
+                    
+                    if playbackState == .stopped {
+                        Button(action: onPlayAnimation) {
+                            Image(systemName: "play.fill")
+                                .font(.title3)
+                                .foregroundColor(.green)
+                                .frame(width: 36, height: 36)
+                        }
+                    } else {
+                        Button(action: onStopAnimation) {
+                            Image(systemName: "stop.fill")
+                                .font(.title3)
+                                .foregroundColor(.red)
+                                .frame(width: 36, height: 36)
+                        }
+                    }
+                    
+                    Divider()
+                        .frame(height: 24)
+                    
                     // Undo button
                     Button(action: onUndo) {
                         Image(systemName: "arrow.uturn.backward")
@@ -1061,8 +1442,6 @@ struct PlayerCircleView: View {
                 .foregroundColor(.white)
         }
         .frame(width: 50, height: 50)
-        // Removed position modifier here, handled by parent ZStack
-        // Removed gesture modifier here
     }
 }
 
@@ -1078,6 +1457,7 @@ struct BasketballView: View {
 }
 
 struct Drawing {
+    var id: UUID = UUID()  // Add unique identifier
     var path: Path
     var color: Color
     var lineWidth: CGFloat
@@ -1085,18 +1465,21 @@ struct Drawing {
     var style: PenStyle
     var points: [CGPoint]  // Track points manually
     var normalizedPoints: [CGPoint]?  // Store normalized points for consistent representation
+    var isAssignedToPlayer: Bool = false  // Track if this path is assigned to a player
 }
 
 struct PlayerCircle {
     var position: CGPoint
     var number: Int
-    var color: Color
+    var color: Color = .blue  // Fixed color instead of computed property
     var normalizedPosition: CGPoint?
+    var assignedPathId: UUID?  // Reference to drawing that this player should follow
 }
 
 struct BasketballItem {
     var position: CGPoint
     var normalizedPosition: CGPoint?
+    var assignedPathId: UUID?  // Reference to drawing that basketball should follow
 }
 
 enum DrawingTool: String, CaseIterable {
@@ -1191,14 +1574,17 @@ struct TouchTypeDetectionView: UIViewRepresentable {
         }
         
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+            print("TouchDetectionView - touchesBegan")
             processTouches(touches, with: event)
         }
         
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+            print("TouchDetectionView - touchesMoved")
             processTouches(touches, with: event)
         }
         
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+            print("TouchDetectionView - touchesEnded")
             guard let touch = touches.first else { return }
             let touchType: TouchInputType
             
@@ -1219,6 +1605,7 @@ struct TouchTypeDetectionView: UIViewRepresentable {
         }
         
         override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+            print("TouchDetectionView - touchesCancelled")
             guard let touch = touches.first else { return }
             let touchType: TouchInputType
             
@@ -1239,7 +1626,8 @@ struct TouchTypeDetectionView: UIViewRepresentable {
         }
         
         private func processTouches(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard let touch = touches.first else { return }
+            // print("TouchDetectionView - processTouches") // Let's comment this one out for now to reduce noise, uncomment if needed
+            guard let touch = touches.first, let event = event else { return } // Ensure event is not nil
             
             let touchType: TouchInputType
             
@@ -1256,13 +1644,18 @@ struct TouchTypeDetectionView: UIViewRepresentable {
                 touchType = touch.type == .stylus ? .pencil : .finger
             }
             
-            // Important: Use PRECISE location for better accuracy
-            let locations = touches.map { 
+            // Process main touch and coalesced touches for smoother drawing
+            var locations: [CGPoint] = []
+            
+            // Get all touches associated with the main touch for this event
+            let allTouches = event.coalescedTouches(for: touch) ?? [touch]
+
+            for t in allTouches {
                 // Use precise location if available (for Apple Pencil)
-                if #available(iOS 13.4, *), $0.type == .pencil {
-                    return $0.preciseLocation(in: self)
+                if #available(iOS 13.4, *), t.type == .pencil {
+                    locations.append(t.preciseLocation(in: self))
                 } else {
-                    return $0.location(in: self)
+                    locations.append(t.location(in: self))
                 }
             }
             
@@ -1290,4 +1683,32 @@ struct ScaledCourtContainer: View {
         return content
             .frame(width: width, height: height)
     }
+}
+
+// Helper View Extension for conditional modifiers
+extension View {
+    /// Applies the given transform if the condition evaluates to `true`.
+    /// - Parameters:
+    ///   - condition: The condition to evaluate.
+    ///   - transform: The transform to apply to the source `View`.
+    /// - Returns: Either the original `View` or the modified `View` if the condition is `true`.
+    @ViewBuilder func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
+}
+
+// Add Animation data structures
+enum PlaybackState {
+    case stopped
+    case playing
+}
+
+struct AnimationPath {
+    let drawingId: UUID
+    let playerIndex: Int
+    let path: [CGPoint]  // Points to follow
 } 
