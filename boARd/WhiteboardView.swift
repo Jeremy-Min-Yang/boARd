@@ -543,9 +543,6 @@ struct WhiteboardView: View {
             )
             .position(x: geometry.size.width / 2, y: (geometry.size.height - 48) / 2)
             
-            // Debug info overlay
-            debugOverlay(courtWidth: courtWidth, courtHeight: courtHeight, drawingWidth: drawingWidth, drawingHeight: drawingHeight)
-            
             // Path assignment mode overlay
             if isPathAssignmentMode {
                 pathAssignmentOverlay()
@@ -682,31 +679,6 @@ struct WhiteboardView: View {
         .frame(width: containerWidth, height: containerHeight) // Outer frame remains
     }
     
-    // Debug overlay
-    @ViewBuilder
-    private func debugOverlay(courtWidth: CGFloat, courtHeight: CGFloat, drawingWidth: CGFloat, drawingHeight: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Court: \(courtType == .full ? "Full" : "Half")")
-                .font(.caption)
-                .foregroundColor(.black)
-            Text("Size: \(Int(drawingWidth))×\(Int(drawingHeight))")
-                .font(.caption)
-                .foregroundColor(.black)
-            Text("Input: \(currentTouchType == .pencil ? "Apple Pencil" : currentTouchType == .finger ? "Finger" : "Unknown")")
-                .font(.caption)
-                .foregroundColor(currentTouchType == .pencil ? .blue : .black)
-        }
-        .padding(8)
-        .background(Color.white.opacity(0.8))
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.gray, lineWidth: 1)
-        )
-        .padding(10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-    
     // Add a helper method to exit path assignment mode
     private func exitPathAssignmentMode() {
         isPathAssignmentMode = false
@@ -819,7 +791,6 @@ struct WhiteboardView: View {
             // Gesture capturing area (fills the parent - the inner ZStack)
             Color.clear
                 .contentShape(Rectangle()) // Makes the clear color tappable
-                .border(Color.red, width: 2) // Optional: keep border for debugging
                 .gesture(
                     // Use DragGesture with minimal distance to detect taps
                     DragGesture(minimumDistance: 0)
@@ -861,7 +832,6 @@ struct WhiteboardView: View {
             // Gesture capturing area (fills the parent - the inner ZStack)
             Color.clear
                 .contentShape(Rectangle()) // Makes the clear color tappable
-                .border(Color.blue, width: 2) // Optional: keep border for debugging
                 .gesture(
                     // Use DragGesture with minimal distance to detect taps
                     DragGesture(minimumDistance: 0)
