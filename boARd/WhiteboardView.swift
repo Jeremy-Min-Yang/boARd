@@ -24,15 +24,15 @@ struct DrawingBoundary {
     
     static let fullCourt = DrawingBoundary(
         width: 1072,
-        height: 638,
+        height: 569,
         offsetX: 0,
-        offsetY: -35
+        offsetY: 0
     )
     
     static let halfCourt = DrawingBoundary(
-        width: 793,  // Keep doubled width
-        height: 950,  // Reduced from 1200 to better match court
-        offsetX: -46,
+        width: 700,  // Keep doubled width
+        height: 855,  // Reduced from 1200 to better match court
+        offsetX: 0,
         offsetY: 98  // Reduced from 150 to bring drawing area up by 50pts
     )
     
