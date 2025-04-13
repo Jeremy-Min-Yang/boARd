@@ -4,6 +4,20 @@ struct HomeScreen: View {
     @State private var showCourtOptions = false
     @State private var selectedCourtType: CourtType?
     @State private var navigateToWhiteboard = false
+    @State private var selectedPlay: SavedPlay?
+    @State private var editMode = false
+    @State private var viewOnlyMode = false
+    
+    // State to keep track of saved plays
+    @State private var savedPlays: [SavedPlay] = []
+    
+    // Format date objects
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
     
     var body: some View {
         NavigationView {
@@ -12,20 +26,75 @@ struct HomeScreen: View {
                 Color(.systemBackground)
                     .edgesIgnoringSafeArea(.all)
                 
-                // App title
-                VStack {
+                // Main content
+                VStack(spacing: 0) {
+                    // App title
                     Text("boARd")
                         .font(.largeTitle)
                         .fontWeight(.bold)
-                        .padding(.top, 50)
+                        .padding(.top, 30)
+                        .padding(.bottom, 20)
                     
-                    Spacer()
-                    
-                    // Empty state message
-                    Text("Create a new whiteboard.")
-                        .foregroundColor(.gray)
-                    
-                    Spacer()
+                    // Saved plays section
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Saved Plays")
+                                .font(.headline)
+                                .padding(.horizontal)
+                            
+                            Spacer()
+                        }
+                        
+                        if savedPlays.isEmpty {
+                            // Empty state message
+                            VStack(spacing: 20) {
+                                Spacer()
+                                Image(systemName: "basketball")
+                                    .font(.system(size: 50))
+                                    .foregroundColor(.gray)
+                                
+                                Text("No saved plays yet")
+                                    .font(.title3)
+                                    .foregroundColor(.gray)
+                                
+                                Text("Create a new whiteboard to get started.")
+                                    .foregroundColor(.gray)
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 50)
+                        } else {
+                            // List of saved plays
+                            ScrollView {
+                                LazyVStack(spacing: 12) {
+                                    ForEach(savedPlays) { play in
+                                        SavedPlayRow(
+                                            play: play, 
+                                            dateFormatter: dateFormatter,
+                                            onEdit: {
+                                                selectedPlay = play
+                                                editMode = true
+                                                viewOnlyMode = false
+                                                navigateToWhiteboard = true
+                                            },
+                                            onView: {
+                                                selectedPlay = play
+                                                editMode = false
+                                                viewOnlyMode = true
+                                                navigateToWhiteboard = true
+                                            },
+                                            onDelete: {
+                                                deletePlay(play)
+                                            }
+                                        )
+                                    }
+                                }
+                                .padding(.horizontal)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical)
                 }
                 
                 // Floating action button
@@ -52,20 +121,161 @@ struct HomeScreen: View {
                 if showCourtOptions {
                     CourtSelectionView(isPresented: $showCourtOptions, onCourtSelected: { courtType in
                         selectedCourtType = courtType
+                        selectedPlay = nil // Make sure we're not editing an existing play
+                        editMode = true  // New plays are always editable
+                        viewOnlyMode = false
                         navigateToWhiteboard = true
                     })
                 }
                 
-                // Navigation link (hidden)
+                // Navigation link to whiteboard
                 NavigationLink(
-                    destination: selectedCourtType.map { WhiteboardView(courtType: $0) },
+                    destination: Group {
+                        if let play = selectedPlay {
+                            // Load existing play
+                            WhiteboardViewContainer(
+                                courtType: play.courtTypeEnum,
+                                play: play,
+                                editMode: editMode
+                            )
+                        } else if let courtType = selectedCourtType {
+                            // New whiteboard
+                            WhiteboardView(courtType: courtType)
+                        } else {
+                            EmptyView()
+                        }
+                    },
                     isActive: $navigateToWhiteboard,
                     label: { EmptyView() }
                 )
             }
             .navigationBarHidden(true)
+            .onAppear {
+                // Load saved plays each time the view appears
+                savedPlays = SavedPlayService.shared.getAllSavedPlays()
+                    .sorted { $0.lastModified > $1.lastModified } // Sort by most recent
+            }
         }
         .navigationViewStyle(StackNavigationViewStyle())
+    }
+    
+    private func deletePlay(_ play: SavedPlay) {
+        // Remove from local state first for immediate UI update
+        savedPlays.removeAll { $0.id == play.id }
+        
+        // Delete from storage
+        SavedPlayService.shared.deletePlay(id: play.id)
+    }
+}
+
+// A container that initializes WhiteboardView with a saved play
+struct WhiteboardViewContainer: View {
+    let courtType: CourtType
+    let play: SavedPlay
+    let editMode: Bool
+    
+    var body: some View {
+        WhiteboardView(courtType: courtType)
+            .onAppear {
+                // Find the WhiteboardView and load the play
+                // Using DispatchQueue to ensure the view is fully initialized
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                       let rootViewController = windowScene.windows.first?.rootViewController {
+                        // Find the WhiteboardView in the view hierarchy
+                        findAndLoadPlayInWhiteboardView(viewController: rootViewController)
+                    }
+                }
+            }
+    }
+    
+    private func findAndLoadPlayInWhiteboardView(viewController: UIViewController) {
+        // Look through the view hierarchy to find a WhiteboardView hosting controller
+        if let hostingController = viewController as? UIHostingController<WhiteboardView> {
+            // Access the SwiftUI WhiteboardView
+            let whiteboardView = hostingController.rootView
+            // Call the loadPlay function (needs to be implemented as a method in WhiteboardView)
+            // This is a somewhat hacky approach due to SwiftUI's limitations
+            // A better approach would be to use an ObservableObject for state management
+            hostingController.rootView.loadPlay(play: play)
+        } else if let navigationController = viewController as? UINavigationController {
+            if let topController = navigationController.topViewController {
+                findAndLoadPlayInWhiteboardView(viewController: topController)
+            }
+        } else if let tabController = viewController as? UITabBarController {
+            if let selectedController = tabController.selectedViewController {
+                findAndLoadPlayInWhiteboardView(viewController: selectedController)
+            }
+        } else if let presentedController = viewController.presentedViewController {
+            findAndLoadPlayInWhiteboardView(viewController: presentedController)
+        }
+    }
+}
+
+struct SavedPlayRow: View {
+    let play: SavedPlay
+    let dateFormatter: DateFormatter
+    let onEdit: () -> Void
+    let onView: () -> Void
+    let onDelete: () -> Void
+    
+    @State private var showDeleteConfirmation = false
+    
+    var body: some View {
+        VStack(alignment: .leading) {
+            HStack {
+                // Play details
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(play.name)
+                        .font(.headline)
+                    
+                    Text("\(play.courtType.capitalized) Court")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    Text("Last modified: \(dateFormatter.string(from: play.lastModified))")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                
+                Spacer()
+                
+                // Action buttons
+                HStack(spacing: 12) {
+                    Button(action: onEdit) {
+                        Image(systemName: "pencil")
+                            .foregroundColor(.blue)
+                    }
+                    
+                    Button(action: onView) {
+                        Image(systemName: "eye")
+                            .foregroundColor(.green)
+                    }
+                    
+                    Button(action: {
+                        showDeleteConfirmation = true
+                    }) {
+                        Image(systemName: "trash")
+                            .foregroundColor(.red)
+                    }
+                }
+                .padding(.trailing, 8)
+            }
+            .padding(.vertical, 8)
+            
+            Divider()
+        }
+        .padding(.horizontal, 8)
+        .alert(isPresented: $showDeleteConfirmation) {
+            Alert(
+                title: Text("Delete Play"),
+                message: Text("Are you sure you want to delete '\(play.name)'? This cannot be undone."),
+                primaryButton: .destructive(Text("Delete")) {
+                    onDelete()
+                },
+                secondaryButton: .cancel()
+            )
+        }
     }
 }
 

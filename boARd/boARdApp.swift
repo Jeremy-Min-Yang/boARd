@@ -4,6 +4,12 @@ import SwiftUI
 struct boARdApp: App {
     @State private var isLoading = true
     
+    // Initialize the SavedPlayService on app launch
+    init() {
+        // Perform any initial setup for saved plays here
+        _ = SavedPlayService.shared
+    }
+    
     var body: some Scene {
         WindowGroup {
             ZStack {
