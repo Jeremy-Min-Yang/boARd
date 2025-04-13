@@ -1,8 +1,6 @@
 import SwiftUI
 import PDFKit
 import UIKit
-import boARd // Add this line to import the module containing SavedPlayService
-import SavedPlay
 
 // Enum definition for CourtType
 enum CourtType {
@@ -486,6 +484,8 @@ struct PlayerAnimationData {
 // Now modify the main WhiteboardView to use these components
 struct WhiteboardView: View {
     let courtType: CourtType
+    var playToLoad: SavedPlay? = nil
+    var isEditable: Bool = true // Default to true (for new plays)
     
     @State private var selectedTool: DrawingTool = .pen
     @State private var selectedPenStyle: PenStyle = .normal
@@ -523,6 +523,10 @@ struct WhiteboardView: View {
     
     // Add this new state variable to track the previous tool
     @State private var previousTool: DrawingTool?
+
+    // State variables for save alert
+    @State private var showingSaveAlert = false
+    @State private var playNameInput = ""
     
     // Computed property to count assigned paths
     private var pathConnectionCount: Int {
@@ -586,6 +590,11 @@ struct WhiteboardView: View {
                         onToolChange: { tool in
                             // Handle tool change
                             handleToolChange(tool)
+                        },
+                        onSave: {
+                            // Placeholder action - will trigger alert later
+                            print("Save button tapped!")
+                            showingSaveAlert = true // <-- Trigger alert here
                         }
                     )
                     .padding(.vertical, 8)
@@ -620,7 +629,27 @@ struct WhiteboardView: View {
             } message: {
                 Text("Are you sure you want to clear the whiteboard? This action cannot be undone.")
             }
+            .alert("Save Play", isPresented: $showingSaveAlert) { // <-- Add alert modifier here
+                TextField("Enter play name", text: $playNameInput)
+                    .autocapitalization(.words) // Optional: Adjust capitalization
+                Button("Save") {
+                    // Call the actual save function
+                    saveCurrentPlay()
+                }
+                .disabled(playNameInput.isEmpty) // Disable if name is empty
+                Button("Cancel", role: .cancel) {
+                    playNameInput = "" // Clear input on cancel
+                }
+            } message: {
+                 Text("Please enter a name for this play.") // Optional message
+            }
             .ignoresSafeArea(edges: .bottom) // Ensure content can use the full screen
+            .onAppear {
+                // Load play data if provided
+                if let play = playToLoad {
+                    loadPlayData(play)
+                }
+            }
         }
     }
     
@@ -1095,28 +1124,39 @@ struct WhiteboardView: View {
     }
     
     private func handleTouchChanged(touchType: TouchInputType, locations: [CGPoint]) {
-        // Update current touch type
-        currentTouchType = touchType
-        
-        // Only show pencil indicator when using a pencil with drawing tools
-        if touchType == .pencil {
-            showPencilIndicator = (selectedTool == .pen || selectedTool == .arrow)
-        } else {
-            showPencilIndicator = false
+        // --- Condition Check: Only process drawing if a drawing tool is selected ---
+        guard selectedTool == .pen || selectedTool == .arrow else {
+            // print("handleTouchChanged: Ignoring touch, selectedTool is \\(selectedTool)") // Reduce log noise
+            return
         }
-        
+
+        // Prevent drawing in path assignment mode
+        guard !isPathAssignmentMode else {
+            print("handleTouchChanged: Ignoring touch, in path assignment mode.")
+            return
+        }
+
+        // Prevent drawing if move tool is active (should be caught by first guard, but double-check)
+         // This guard might be redundant now due to the first one, but keep for safety
+        guard selectedTool != .move else { return }
+
+
+        currentTouchType = touchType
+        // Only show pencil indicator when using a pencil with drawing tools
+         showPencilIndicator = (touchType == .pencil && (selectedTool == .pen || selectedTool == .arrow)) // Corrected indicator logic
+
+
         // If we're in drawing mode with a pencil, and not currently dragging something, handle drawing
-        if touchType == .pencil && 
-           (selectedTool == .pen || selectedTool == .arrow) && 
-           draggedPlayerIndex == nil && 
-           draggedBasketballIndex == nil &&
-           !isPathAssignmentMode { // Prevent drawing in path assignment mode
-            
+        // Ensure not accidentally dragging while drawing
+        if touchType == .pencil && (selectedTool == .pen || selectedTool == .arrow) && draggedPlayerIndex == nil && draggedBasketballIndex == nil && !isPathAssignmentMode {
+
             // Process each location received (includes coalesced touches)
             if !locations.isEmpty {
                 // Use the last location for visual indicator
                 lastTouchLocation = locations.last!
-                
+                 showPencilIndicator = true // Show indicator while drawing with pencil
+
+
                 // Process each location for drawing
                 for location in locations {
                     if currentDrawing == nil {
@@ -1127,15 +1167,61 @@ struct WhiteboardView: View {
                         self.continueDrawing(at: location)
                     }
                 }
-                
+
                 // Debug info for drawing
                 if debugMode {
-                    print("Drawing at \(lastTouchLocation)")
+                    // print("Drawing at \\(lastTouchLocation)") // Reduce log noise
                 }
             }
+         } else {
+             // Hide indicator if not drawing with pencil or if dragging
+             showPencilIndicator = false
+         }
+    }
+
+    private func handleTouchEnded(touchType: TouchInputType) {
+        print("handleTouchEnded: tool=\(selectedTool), type=\(touchType)")
+
+        // Always hide indicator on touch end
+        showPencilIndicator = false
+
+        // If we were drawing, finalize the drawing
+        if (selectedTool == .pen || selectedTool == .arrow) && currentDrawing != nil { // Check tool selection here too
+            if let drawing = currentDrawing {
+                 // Ensure minimum points for an arrow (maybe 2 is enough?)
+                 if drawing.type == .arrow && drawing.points.count < 2 {
+                     print("Arrow too short, discarding.")
+                     currentDrawing = nil // Discard short arrow
+                 } else {
+                     print("Finalizing drawing (ID: \\(drawing.id), type: \\(drawing.type))")
+                     drawings.append(drawing)
+                     actions.append(.drawing(drawing))
+                     currentDrawing = nil
+                 }
+            }
+        }
+
+        // --- Finalize Move Operation ---
+        // Check if we WERE dragging a player
+        if let playerIndex = draggedPlayerIndex {
+             print("handleTouchEnded: Finalizing move for player \\(playerIndex)")
+             // Update normalized position one last time (might be redundant if done in handleMove, but safe)
+             if playerIndex >= 0 && playerIndex < players.count {
+                 updateNormalizedPosition(forPlayer: playerIndex, location: players[playerIndex].position)
+             }
+            draggedPlayerIndex = nil // Reset drag index
+        }
+        // Check if we WERE dragging a basketball
+        if let basketballIndex = draggedBasketballIndex {
+             print("handleTouchEnded: Finalizing move for basketball \\(basketballIndex)")
+             // Update normalized position one last time
+             if basketballIndex >= 0 && basketballIndex < basketballs.count {
+                 updateNormalizedPosition(forBasketball: basketballIndex, location: basketballs[basketballIndex].position)
+             }
+            draggedBasketballIndex = nil // Reset drag index
         }
     }
-    
+
     // Helper function to get dimensions for calculations outside geometry reader
     private func getCourtDimensions() -> (width: CGFloat, height: CGFloat) {
         let screenSize = UIScreen.main.bounds.size
@@ -1276,59 +1362,6 @@ struct WhiteboardView: View {
         
         // Update the indicator position
         lastTouchLocation = currentPoint // Use direct point
-    }
-    
-    private func handleTouchEnded(touchType: TouchInputType) {
-        print("WhiteboardView handleTouchEnded - TouchType: \(touchType), CurrentDrawing Exists: \(currentDrawing != nil)")
-
-        // Hide pencil indicator
-        showPencilIndicator = false
-        
-        // If we were drawing, end the drawing
-        if touchType == .pencil && currentDrawing != nil {
-            // Add the completed drawing to the collection
-            if let drawing = currentDrawing {
-                drawings.append(drawing)
-                // Add to actions array
-                actions.append(.drawing(drawing))
-                currentDrawing = nil
-            }
-        }
-        
-        // Reset any dragged indices to finish movement
-        if selectedTool == .move {
-            // Safety check before resetting indices
-            if let index = draggedPlayerIndex {
-                if index >= 0 && index < players.count {
-                    print("Finalizing player movement at index \(index)")
-                    // Normalize the position before resetting
-                    let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
-                    let normalizedX = players[index].position.x / boundary.width
-                    let normalizedY = players[index].position.y / boundary.height
-                    players[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                } else {
-                    print("Ignoring invalid player index: \(index)")
-                }
-            }
-            
-            if let index = draggedBasketballIndex {
-                if index >= 0 && index < basketballs.count {
-                    print("Finalizing basketball movement at index \(index)")
-                    // Normalize the position before resetting
-                    let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
-                    let normalizedX = basketballs[index].position.x / boundary.width
-                    let normalizedY = basketballs[index].position.y / boundary.height
-                    basketballs[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                } else {
-                    print("Ignoring invalid basketball index: \(index)")
-                }
-            }
-            
-            // Clear both indices
-            draggedPlayerIndex = nil
-            draggedBasketballIndex = nil
-            print("Touch ended, cleared dragged indices")
-        }
     }
     
     private func addPlayerAt(position: CGPoint) {
@@ -1652,173 +1685,226 @@ struct WhiteboardView: View {
     }
     
     private func handleMove(location: CGPoint) {
-        if debugMode {
-            print("======== MOVE DEBUG ========")
-            print("Touch location: \(location)")
-            print("Players count: \(players.count)")
-            for (i, p) in players.enumerated() {
-                print("Player \(i): position=\(p.position)")
-            }
-            print("Basketballs count: \(basketballs.count)")
-            for (i, b) in basketballs.enumerated() {
-                print("Basketball \(i): position=\(b.position)")
-            }
-            print("Currently dragged: player=\(String(describing: draggedPlayerIndex)), basketball=\(String(describing: draggedBasketballIndex))")
-        }
-        
-        // If there are no players or basketballs, don't try to access them
-        if players.isEmpty && basketballs.isEmpty {
-            // Clear any potential drag indices as there's nothing to drag
-            draggedPlayerIndex = nil
-            draggedBasketballIndex = nil
-            if debugMode {
-                print("No players or basketballs available to move")
-                print("============================")
-            }
-            return
-        }
-        
-        // Safety check for player index
-        if let playerIndex = draggedPlayerIndex {
-            // Make sure the index is in range
-            if playerIndex >= 0 && playerIndex < players.count {
-                // Continue moving the currently dragged player
-                if debugMode {
-                    print("Continuing to move player \(playerIndex) to \(location)")
-                }
-                
-                // Update position
-                players[playerIndex].position = location
-                
-                // Also update normalized position
-                let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
-                let normalizedX = location.x / boundary.width
-                let normalizedY = location.y / boundary.height
-                players[playerIndex].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                return
-            } else {
-                // Index out of range, reset it
-                print("WARNING: Player index \(playerIndex) out of range, resetting")
-                draggedPlayerIndex = nil
-            }
-        }
-        
-        // Safety check for basketball index
-        if let basketballIndex = draggedBasketballIndex {
-            // Make sure the index is in range
-            if basketballIndex >= 0 && basketballIndex < basketballs.count {
-                // Continue moving the currently dragged basketball
-                if debugMode {
-                    print("Continuing to move basketball \(basketballIndex) to \(location)")
-                }
-                
-                // Update position
-                basketballs[basketballIndex].position = location
-                
-                // Also update normalized position
-                let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
-                let normalizedX = location.x / boundary.width
-                let normalizedY = location.y / boundary.height
-                basketballs[basketballIndex].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                return
-            } else {
-                // Index out of range, reset it
-                print("WARNING: Basketball index \(basketballIndex) out of range, resetting")
-                draggedBasketballIndex = nil
-            }
-        }
-        
-        // Nothing being dragged yet, check if we're on a player or basketball
-        
-        // First try to find a player at this location
-        for (index, player) in players.enumerated() {
-            // Create a hit test frame around player position
-            let hitFrame = CGRect(
-                x: player.position.x - 40,
-                y: player.position.y - 40,
-                width: 80,
-                height: 80
-            )
-            
-            if hitFrame.contains(location) {
-                // Found a player to move
-                if debugMode {
-                    print("FOUND HIT! Starting to move player \(index) at \(location)")
-                    print("Player position: \(player.position)")
-                    print("Hit frame: \(hitFrame)")
-                }
-                
-                // Start dragging this player
-                draggedPlayerIndex = index
-                players[index].position = location
-                return
-            } else if debugMode {
-                print("No hit on player \(index), hitFrame=\(hitFrame), touch=\(location)")
-            }
-        }
-        
-        // If no player found, try to find a basketball
-        for (index, basketball) in basketballs.enumerated() {
-            // Create a hit test frame around basketball position
-            let hitFrame = CGRect(
-                x: basketball.position.x - 35,
-                y: basketball.position.y - 35,
-                width: 70,
-                height: 70
-            )
-            
-            if hitFrame.contains(location) {
-                // Found a basketball to move
-                if debugMode {
-                    print("FOUND HIT! Starting to move basketball \(index) at \(location)")
-                    print("Basketball position: \(basketball.position)")
-                    print("Hit frame: \(hitFrame)")
-                }
-                
-                // Start dragging this basketball
-                draggedBasketballIndex = index
-                basketballs[index].position = location
-                return
-            } else if debugMode {
-                print("No hit on basketball \(index), hitFrame=\(hitFrame), touch=\(location)")
-            }
-        }
-        
-        if debugMode {
-            print("No item found to move at \(location)")
-            print("============================")
-        }
+         // Ensure move tool is active *before* doing anything else
+         guard selectedTool == .move else {
+             // print("handleMove called but selectedTool is \\(selectedTool). Ignoring.") // Reduce noise
+             return
+         }
+
+         // Simplified Debug Logging
+         if debugMode {
+              print("handleMove: loc=\(location), draggingP=\(String(describing: draggedPlayerIndex)), draggingB=\(String(describing: draggedBasketballIndex))")
+         }
+
+         // If currently dragging a player
+         if let playerIndex = draggedPlayerIndex {
+             // Make sure the index is in range
+             if playerIndex >= 0 && playerIndex < players.count {
+                 // Continue moving the currently dragged player
+                 players[playerIndex].position = location
+                 updateNormalizedPosition(forPlayer: playerIndex, location: location)
+                 return // Already handled drag update
+             } else {
+                 // Index out of range, reset it
+                 print("WARNING: Player index \\(playerIndex) out of range, resetting drag")
+                 draggedPlayerIndex = nil
+             }
+         }
+
+         // If currently dragging a basketball
+         if let basketballIndex = draggedBasketballIndex {
+             // Make sure the index is in range
+             if basketballIndex >= 0 && basketballIndex < basketballs.count {
+                 // Continue moving the currently dragged basketball
+                 basketballs[basketballIndex].position = location
+                 updateNormalizedPosition(forBasketball: basketballIndex, location: location)
+                 return // Already handled drag update
+             } else {
+                 // Index out of range, reset it
+                 print("WARNING: Basketball index \\(basketballIndex) out of range, resetting drag")
+                 draggedBasketballIndex = nil
+             }
+         }
+
+         // --- Hit Testing: Only if NOT currently dragging anything ---
+         guard draggedPlayerIndex == nil && draggedBasketballIndex == nil else {
+              // Already handled drag update above, no need for hit testing
+              return
+         }
+
+         // Check for players first
+         for (index, player) in players.enumerated() {
+             let playerFrame = CGRect(x: player.position.x - 40, y: player.position.y - 40, width: 80, height: 80)
+             if playerFrame.contains(location) {
+                 if debugMode { print("handleMove: FOUND HIT! Starting to move player \\(index)") }
+                 draggedPlayerIndex = index
+                 players[index].position = location // Update position immediately
+                 updateNormalizedPosition(forPlayer: index, location: location)
+                 return // Found a player, start dragging
+             }
+         }
+
+         // Check for basketballs if no player was hit
+         for (index, basketball) in basketballs.enumerated() {
+              let basketballFrame = CGRect(x: basketball.position.x - 35, y: basketball.position.y - 35, width: 70, height: 70)
+             if basketballFrame.contains(location) {
+                  if debugMode { print("handleMove: FOUND HIT! Starting to move basketball \\(index)") }
+                 draggedBasketballIndex = index
+                 basketballs[index].position = location // Update position immediately
+                 updateNormalizedPosition(forBasketball: index, location: location)
+                 return // Found a basketball, start dragging
+             }
+         }
+
+         if debugMode {
+              // print("handleMove: No item found to start dragging at \\(location)") // Reduce noise
+         }
     }
     
     private func handleToolChange(_ tool: DrawingTool) {
-        // Reset touch handling when changing tools
-        if selectedTool != tool {
-            // Clear any drawing in progress
-            if tool != .pen && tool != .arrow {
-                currentDrawing = nil
-            }
-            
-            // Reset touch location when switching away from move tool
-            if selectedTool == .move {
-                // Hide any pencil indicator
-                showPencilIndicator = false
-                // Reset last touch location
-                lastTouchLocation = .zero
-            }
-            
-            // Reset drag indices when switching away from move tool
-            if selectedTool == .move && (tool == .pen || tool == .arrow) {
-                draggedPlayerIndex = nil
-                draggedBasketballIndex = nil
+        // Don't do anything if the same tool is tapped unless it's an 'add' tool
+        if selectedTool == tool && tool != .addPlayer && tool != .addBasketball {
+             print("Tool tapped, but it's the same non-add tool (\\(tool)). No state change.")
+             // Ensure add modes are off if tapping same non-add tool
+             isAddingPlayer = false
+             isAddingBasketball = false
+            return
+        }
+
+         print("Tool changing from \\(selectedTool) to \\(tool)")
+
+        // --- Store old tool ---
+         let previousSelectedTool = selectedTool
+
+        // --- Update selectedTool state ---
+         selectedTool = tool
+
+        // --- Handle state resets based on the *previous* tool ---
+        // Clear current drawing if switching AWAY from drawing tools
+         if previousSelectedTool == .pen || previousSelectedTool == .arrow {
+             if tool != .pen && tool != .arrow {
+                 currentDrawing = nil
+                 print("Cleared currentDrawing")
             }
         }
+        // Reset indicator/location if switching AWAY from move tool
+         if previousSelectedTool == .move {
+            showPencilIndicator = false
+            lastTouchLocation = .zero
+            print("Reset pencil indicator and last touch location")
+        }
+        // Reset drag indices if switching AWAY from move tool
+         if previousSelectedTool == .move {
+            // No need to check the new tool, just reset if old was move
+            draggedPlayerIndex = nil
+            draggedBasketballIndex = nil
+            print("Reset drag indices because switching AWAY from move tool")
+        }
+
+        // --- Handle state based on the *new* tool ---
+        // Activate Add Modes or ensure they are off
+         if tool == .addPlayer {
+             isAddingPlayer = true
+             isAddingBasketball = false
+             print("Activating Add Player overlay")
+         } else if tool == .addBasketball {
+             isAddingBasketball = true
+             isAddingPlayer = false
+             print("Activating Add Basketball overlay")
+         } else {
+             // Ensure add modes are off for any other tool
+             isAddingPlayer = false
+             isAddingBasketball = false
+             // print("Add modes deactivated for tool \\(tool)") // Can add if needed
+         }
+
+
+        // --- General cleanup ---
+        // Exit path assignment mode if it was active
+        if isPathAssignmentMode {
+             exitPathAssignmentMode()
+             print("Exited path assignment mode due to tool change")
+        }
+
+
+        // Final debug log for confirmation
+        print("Tool change complete. Current tool: \\(selectedTool), isAddingPlayer: \\(isAddingPlayer), isAddingBasketball: \\(isAddingBasketball)")
+    }
+
+    private func loadPlayData(_ play: SavedPlay) {
+        // Convert and update state variables
+        self.drawings = play.drawings.map { SavedPlayService.convertToDrawing(drawingData: $0) }
+        self.players = play.players.map { SavedPlayService.convertToPlayer(playerData: $0) }
+        self.basketballs = play.basketballs.map { SavedPlayService.convertToBasketball(basketballData: $0) }
         
-        // Debug info for move tool
-        if tool == .move {
-            print("Move tool selected - touch detection disabled")
-        } else if tool == .pen || tool == .arrow {
-            print("Drawing tool selected - touch detection enabled")
+        // Set play name if needed (you might want to add a @State var for this)
+        // self.playName = play.name
+        
+        // Set other states based on the loaded play if necessary
+    }
+
+    // Add helper functions for normalized position updates
+    private func updateNormalizedPosition(forPlayer index: Int, location: CGPoint) {
+        guard index >= 0 && index < players.count else { return }
+        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+        let normalizedX = location.x / boundary.width
+        let normalizedY = location.y / boundary.height
+        players[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
+    }
+
+    private func updateNormalizedPosition(forBasketball index: Int, location: CGPoint) {
+         guard index >= 0 && index < basketballs.count else { return }
+        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+        let normalizedX = location.x / boundary.width
+        let normalizedY = location.y / boundary.height
+        basketballs[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
+    }
+
+    // Add the actual save function
+    private func saveCurrentPlay() {
+        // 1. Gather Data
+        let currentDrawings = self.drawings
+        let currentPlayers = self.players
+        let currentBasketballs = self.basketballs
+        let name = self.playNameInput.trimmingCharacters(in: .whitespacesAndNewlines) // Trim whitespace
+        let courtTypeString = self.courtType == .full ? "full" : "half"
+
+        // Ensure name is not empty after trimming
+        guard !name.isEmpty else {
+            print("Save cancelled: Play name is empty.")
+            // Optionally show an alert to the user
+            return
         }
+
+        // 2. Convert Data
+        let drawingData = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
+        let playerData = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
+        let basketballData = currentBasketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
+
+        // 3. Create SavedPlay Object
+        // Check if we are editing an existing play (playToLoad is not nil)
+        // For now, we always create a new play as per original plan
+        let newPlay = SavedPlay(
+            id: UUID(), // Always generate a new ID for now
+            name: name,
+            dateCreated: Date(), // Set creation date
+            lastModified: Date(), // Set modification date
+            courtType: courtTypeString,
+            drawings: drawingData,
+            players: playerData,
+            basketballs: basketballData
+        )
+
+
+        // 4. Persist
+        SavedPlayService.shared.savePlay(newPlay)
+        print("Play '\(name)' saved successfully with ID: \(newPlay.id)")
+
+        // 5. Cleanup
+        playNameInput = "" // Clear the input field
+        showingSaveAlert = false // Dismiss the alert implicitly by state change
+
+        // Optional: Add user feedback (e.g., a temporary banner)
     }
 }
 
@@ -1828,147 +1914,88 @@ struct ToolbarView: View {
     @Binding var playbackState: PlaybackState
     @Binding var isPathAssignmentMode: Bool
     let pathCount: Int
-    var onAddPlayer: () -> Void
-    var onAddBasketball: () -> Void
-    var onUndo: () -> Void
-    var onClear: () -> Void
-    var onPlayAnimation: () -> Void
-    var onStopAnimation: () -> Void
-    var onAssignPath: () -> Void
-    var onToolChange: (DrawingTool) -> Void // New callback for handling tool changes
-    
+    let onAddPlayer: () -> Void
+    let onAddBasketball: () -> Void
+    let onUndo: () -> Void
+    let onClear: () -> Void
+    let onPlayAnimation: () -> Void
+    let onStopAnimation: () -> Void
+    let onAssignPath: () -> Void
+    let onToolChange: (DrawingTool) -> Void
+    // Add the new save action closure
+    let onSave: () -> Void
+
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 15) {
-                    Spacer(minLength: 0)
-                    
-                    // Drawing tool selection
-                    ForEach(DrawingTool.allCases, id: \.self) { tool in
-                        Button(action: {
-                            // Use the callback to handle tool changes
-                            onToolChange(tool)
-                            
-                            // Update the local tool state
-                            selectedTool = tool
-                        }) {
-                            Image(systemName: tool.iconName)
-                                .font(.title3)
-                                .foregroundColor(selectedTool == tool ? .blue : .gray)
-                                .frame(width: 36, height: 36)
-                                .background(selectedTool == tool ? Color.blue.opacity(0.2) : Color.clear)
-                                .cornerRadius(8)
-                        }
-                    }
-                    
-                    Divider()
-                        .frame(height: 24)
-                    
-                    // Pen style selection
-                    if selectedTool == .pen {
-                        ForEach(PenStyle.allCases, id: \.self) { style in
-                            Button(action: {
-                                selectedPenStyle = style
-                            }) {
-                                Image(systemName: style.iconName)
-                                    .font(.title3)
-                                    .foregroundColor(selectedPenStyle == style ? .blue : .gray)
-                                    .frame(width: 36, height: 36)
-                                    .background(selectedPenStyle == style ? Color.blue.opacity(0.2) : Color.clear)
-                                    .cornerRadius(8)
-                            }
-                        }
-                        
-                        Divider()
-                            .frame(height: 24)
-                    }
-                    
-                    // Add player button
-                    Button(action: onAddPlayer) {
-                        Image(systemName: "person.fill.badge.plus")
-                            .font(.title3)
-                            .foregroundColor(.gray)
-                            .frame(width: 36, height: 36)
-                    }
-                    
-                    // Add basketball button
-                    Button(action: onAddBasketball) {
-                        Image(systemName: "basketball.fill")
-                            .font(.title3)
-                            .foregroundColor(.orange)
-                            .frame(width: 36, height: 36)
-                    }
-                    
-                    Divider()
-                        .frame(height: 24)
-                    
-                    // Animation controls
-                    Button(action: onAssignPath) {
-                        ZStack {
-                            Image(systemName: "arrow.triangle.pull")
-                                .font(.title3)
-                                .foregroundColor(isPathAssignmentMode ? .blue : .gray)
-                                .frame(width: 36, height: 36)
-                                .background(isPathAssignmentMode ? Color.blue.opacity(0.2) : Color.clear)
-                                .cornerRadius(8)
-                            
-                            // Show path count badge if there are assigned paths
-                            if pathCount > 0 && !isPathAssignmentMode {
-                                Text("\(pathCount)")
-                                    .font(.caption2)
-                                    .foregroundColor(.white)
-                                    .padding(4)
-                                    .background(Color.green)
-                                    .clipShape(Circle())
-                                    .offset(x: 12, y: -12)
-                            }
-                        }
-                    }
-                    
-                    if playbackState == .stopped {
-                        Button(action: onPlayAnimation) {
-                            Image(systemName: "play.fill")
-                                .font(.title3)
-                                .foregroundColor(.green)
-                                .frame(width: 36, height: 36)
-                        }
-                        .disabled(pathCount == 0) // Disable if no paths assigned
-                        .opacity(pathCount == 0 ? 0.5 : 1.0) // Show as faded if disabled
-                    } else {
-                        Button(action: onStopAnimation) {
-                            Image(systemName: "stop.fill")
-                                .font(.title3)
-                                .foregroundColor(.red)
-                                .frame(width: 36, height: 36)
-                        }
-                    }
-                    
-                    Divider()
-                        .frame(height: 24)
-                    
-                    // Undo button
-                    Button(action: onUndo) {
-                        Image(systemName: "arrow.uturn.backward")
-                            .font(.title3)
-                            .foregroundColor(.blue)
-                            .frame(width: 36, height: 36)
-                    }
-                    
-                    // Clear button
-                    Button(action: onClear) {
-                        Image(systemName: "trash")
-                            .font(.title3)
-                            .foregroundColor(.red)
-                            .frame(width: 36, height: 36)
-                    }
-                    
-                    Spacer(minLength: 0)
+        HStack {
+            // Existing tool buttons...
+            ToolButton(icon: "pencil.tip", selectedTool: $selectedTool, currentTool: .pen, action: { onToolChange(.pen) })
+            ToolButton(icon: "arrow.right", selectedTool: $selectedTool, currentTool: .arrow, action: { onToolChange(.arrow) })
+            ToolButton(icon: "hand.point.up.left", selectedTool: $selectedTool, currentTool: .move, action: { onToolChange(.move) })
+            ToolButton(icon: "plus.circle", selectedTool: $selectedTool, currentTool: .addPlayer, action: { onAddPlayer() })
+            ToolButton(icon: "basketball", selectedTool: $selectedTool, currentTool: .addBasketball, action: { onAddBasketball() })
+
+            Spacer()
+
+            // Path assignment button
+            Button(action: onAssignPath) {
+                HStack {
+                    Image(systemName: isPathAssignmentMode ? "arrow.triangle.pull.fill" : "arrow.triangle.pull")
+                    Text("\(pathCount)") // Show count
                 }
-                .frame(width: geometry.size.width)
-                .padding(.vertical, 4)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(isPathAssignmentMode ? Color.blue.opacity(0.7) : Color.gray.opacity(0.2))
+                .foregroundColor(isPathAssignmentMode ? .white : .primary)
+                .cornerRadius(8)
             }
+            .padding(.trailing, 8)
+
+            // Playback controls
+            if playbackState == .stopped {
+                Button(action: onPlayAnimation) {
+                    Image(systemName: "play.fill")
+                }
+            } else {
+                Button(action: onStopAnimation) {
+                    Image(systemName: "stop.fill")
+                }
+            }
+
+            Spacer()
+
+            // Undo, Clear, and Save buttons
+            Button(action: onUndo) {
+                Image(systemName: "arrow.uturn.backward")
+            }
+            Button(action: onClear) {
+                Image(systemName: "trash")
+            }
+            // Add the Save Button
+            Button(action: onSave) { // Use the new onSave closure
+                Image(systemName: "square.and.arrow.down")
+            }
+
         }
-        .frame(height: 44)
+        .padding()
+    }
+}
+
+// Define the ToolButton struct here
+struct ToolButton: View {
+    let icon: String
+    @Binding var selectedTool: DrawingTool
+    let currentTool: DrawingTool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(selectedTool == currentTool ? .blue : .gray)
+                .frame(width: 36, height: 36)
+                .background(selectedTool == currentTool ? Color.blue.opacity(0.2) : Color.clear)
+                .cornerRadius(8)
+        }
     }
 }
 
@@ -2052,12 +2079,18 @@ enum DrawingTool: String, CaseIterable {
     case pen
     case arrow
     case move
-    
+    // Add the new cases
+    case addPlayer
+    case addBasketball
+
     var iconName: String {
         switch self {
         case .pen: return "pencil"
         case .arrow: return "arrow.up.right"
         case .move: return "hand.point.up.left.fill"
+        // Add icons for the new cases
+        case .addPlayer: return "person.fill.badge.plus"
+        case .addBasketball: return "basketball.fill"
         }
     }
 }
@@ -2393,6 +2426,12 @@ extension WhiteboardView {
 
         // Should ideally not be reached if progress <= 1, but return last point as fallback
         return points.last
+    }
+}
+
+struct WhiteboardView_Previews: PreviewProvider {
+    static var previews: some View {
+        WhiteboardView(courtType: .full)
     }
 }
 

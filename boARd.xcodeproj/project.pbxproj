@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09CCAB642DAC1B06001FC93E /* SavedPlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09CCAB632DAC1B06001FC93E /* SavedPlay.swift */; };
 		58A4C39128F0E72C00E16278 /* boARdApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4C39028F0E72C00E16278 /* boARdApp.swift */; };
 		58A4C39328F0E72C00E16278 /* HomeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4C39228F0E72C00E16278 /* HomeScreen.swift */; };
 		58A4C39528F0E72E00E16278 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 58A4C39428F0E72E00E16278 /* Assets.xcassets */; };
@@ -15,6 +16,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		09CCAB632DAC1B06001FC93E /* SavedPlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedPlay.swift; sourceTree = "<group>"; };
 		58A4C38D28F0E72C00E16278 /* boARd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = boARd.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		58A4C39028F0E72C00E16278 /* boARdApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = boARdApp.swift; sourceTree = "<group>"; };
 		58A4C39228F0E72C00E16278 /* HomeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeScreen.swift; sourceTree = "<group>"; };
@@ -57,6 +59,7 @@
 				58A4C39028F0E72C00E16278 /* boARdApp.swift */,
 				58A4C39228F0E72C00E16278 /* HomeScreen.swift */,
 				58A4C39F28F0E74700E16278 /* WhiteboardView.swift */,
+				09CCAB632DAC1B06001FC93E /* SavedPlay.swift */,
 				58A4C39428F0E72E00E16278 /* Assets.xcassets */,
 				58A4C39928F0E72E00E16278 /* Info.plist */,
 				58A4C39628F0E72E00E16278 /* Preview Content */,
@@ -144,6 +147,7 @@
 				58A4C39328F0E72C00E16278 /* HomeScreen.swift in Sources */,
 				58A4C3A028F0E74700E16278 /* WhiteboardView.swift in Sources */,
 				58A4C39128F0E72C00E16278 /* boARdApp.swift in Sources */,
+				09CCAB642DAC1B06001FC93E /* SavedPlay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

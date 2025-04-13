@@ -132,14 +132,10 @@ struct HomeScreen: View {
                 NavigationLink(
                     destination: Group {
                         if let play = selectedPlay {
-                            // Load existing play
-                            WhiteboardViewContainer(
-                                courtType: play.courtTypeEnum,
-                                play: play,
-                                editMode: editMode
-                            )
+                            // Pass the play and editMode directly
+                            WhiteboardView(courtType: play.courtTypeEnum, playToLoad: play, isEditable: editMode)
                         } else if let courtType = selectedCourtType {
-                            // New whiteboard
+                            // New whiteboard (default editable)
                             WhiteboardView(courtType: courtType)
                         } else {
                             EmptyView()
@@ -165,50 +161,6 @@ struct HomeScreen: View {
         
         // Delete from storage
         SavedPlayService.shared.deletePlay(id: play.id)
-    }
-}
-
-// A container that initializes WhiteboardView with a saved play
-struct WhiteboardViewContainer: View {
-    let courtType: CourtType
-    let play: SavedPlay
-    let editMode: Bool
-    
-    var body: some View {
-        WhiteboardView(courtType: courtType)
-            .onAppear {
-                // Find the WhiteboardView and load the play
-                // Using DispatchQueue to ensure the view is fully initialized
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                       let rootViewController = windowScene.windows.first?.rootViewController {
-                        // Find the WhiteboardView in the view hierarchy
-                        findAndLoadPlayInWhiteboardView(viewController: rootViewController)
-                    }
-                }
-            }
-    }
-    
-    private func findAndLoadPlayInWhiteboardView(viewController: UIViewController) {
-        // Look through the view hierarchy to find a WhiteboardView hosting controller
-        if let hostingController = viewController as? UIHostingController<WhiteboardView> {
-            // Access the SwiftUI WhiteboardView
-            let whiteboardView = hostingController.rootView
-            // Call the loadPlay function (needs to be implemented as a method in WhiteboardView)
-            // This is a somewhat hacky approach due to SwiftUI's limitations
-            // A better approach would be to use an ObservableObject for state management
-            hostingController.rootView.loadPlay(play: play)
-        } else if let navigationController = viewController as? UINavigationController {
-            if let topController = navigationController.topViewController {
-                findAndLoadPlayInWhiteboardView(viewController: topController)
-            }
-        } else if let tabController = viewController as? UITabBarController {
-            if let selectedController = tabController.selectedViewController {
-                findAndLoadPlayInWhiteboardView(viewController: selectedController)
-            }
-        } else if let presentedController = viewController.presentedViewController {
-            findAndLoadPlayInWhiteboardView(viewController: presentedController)
-        }
     }
 }
 
