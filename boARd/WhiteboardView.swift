@@ -606,8 +606,8 @@ struct WhiteboardView: View {
                         onPlayAnimation: {
                             startAnimation()
                         },
-                        onStopAnimation: {
-                            stopAnimation()
+                        onPauseAnimation: {
+                            pauseAnimation()
                         },
                         onAssignPath: {
                             togglePathAssignmentMode()
@@ -617,9 +617,11 @@ struct WhiteboardView: View {
                             handleToolChange(tool)
                         },
                         onSave: {
-                            // Placeholder action - will trigger alert later
                             print("Save button tapped!")
-                            showingSaveAlert = true // <-- Trigger alert here
+                            // Introduce a tiny delay before showing alert
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { // Small delay (e.g., 0.05s)
+                                showingSaveAlert = true
+                            }
                         }
                     )
                     .padding(.vertical, 8) // Restore vertical padding around ToolbarView
@@ -658,6 +660,8 @@ struct WhiteboardView: View {
                 TextField("Enter play name", text: $playNameInput)
                     .autocapitalization(.words) // Optional: Adjust capitalization
                 Button("Save") {
+                    // Confirm this action block is executing
+                    print("Alert Save Button Action Triggered. Calling saveCurrentPlay()...") 
                     // Call the actual save function
                     saveCurrentPlay()
                 }
@@ -982,10 +986,8 @@ struct WhiteboardView: View {
             
             Spacer()
 
-            // Remove the diagnostic tap button here
-
-            // Show assigned path count in the middle of the screen
-            // Update to use playerAnimationData
+            // Remove the assigned path count text
+            /*
             if playerAnimationData.count > 0 {
                 Text("\(playerAnimationData.count) paths assigned")
                     .font(.headline)
@@ -994,6 +996,7 @@ struct WhiteboardView: View {
                     .background(Color.black.opacity(0.7))
                     .cornerRadius(10)
             }
+            */
             
             Spacer()
             
@@ -1590,130 +1593,182 @@ struct WhiteboardView: View {
                  if players[playerIndex].isMoving {
                     players[playerIndex].isMoving = false
                  }
+                 // Ensure player is snapped to final position
+                 if let finalPosition = getPointOnPath(points: animData.pathPoints, progress: 1.0) {
+                    players[playerIndex].position = finalPosition
+                 }
             }
         }
 
-        // If all animations are done, stop the timer
+        // If all animations are done, call completeAnimation
         if allAnimationsComplete {
-            print("All animations completed.")
-            stopAnimation() // Call stop to clean up state
+            print("All animations reported complete.")
+            // Call completeAnimation instead of pauseAnimation
+            completeAnimation()
         }
     }
 
     private func startAnimation() {
-        guard playbackState != .playing else {
-            print("Animation already in progress")
-            return
-        }
+        let currentTime = Date() // Get current time for calculations
 
-        print("Preparing animation...")
-        playbackState = .playing // Set state early
+        switch playbackState {
+        case .playing:
+            print("Animation already playing.")
+            return // Do nothing if already playing
 
-        // 1. Clear previous animation data and store original positions
-        animationTimer?.invalidate() // Stop any existing timer
-        playerAnimationData.removeAll()
-        originalPlayerPositions.removeAll()
-
-        let pixelsPerSecond: CGFloat = 275 // Increased speed for more realistic basketball movements
-        var playersToAnimate = 0
-        let startTime = Date() // Use a single start time for all animations starting now
-
-        // Highlight all paths being followed during animation
-        for i in drawings.indices {
-            if players.contains(where: { $0.assignedPathId == drawings[i].id }) {
-                // This drawing has an assigned player - highlight it during animation
-                drawings[i].isHighlightedDuringAnimation = true
-            }
-        }
-
-        // 2. Iterate through players and prepare animation data
-        for playerIndex in players.indices {
-            guard let pathId = players[playerIndex].assignedPathId,
-                  let drawing = drawings.first(where: { $0.id == pathId }),
-                  !drawing.points.isEmpty else {
-                // Skip players without a valid assigned path
-                continue
+        case .paused:
+            print("Resuming animation...")
+            // Ensure we have animation data and the time when pause occurred
+            guard !playerAnimationData.isEmpty, let pt = pauseTime else {
+                print("Cannot resume: Missing animation data or pause time. Resetting state.")
+                playbackState = .stopped
+                pauseTime = nil // Clear pause time just in case
+                // We should also potentially reset player positions here if desired
+                return
             }
 
-            let playerId = players[playerIndex].id
-            let pathPoints = drawing.points
+            // Calculate how long the animation was paused
+            let pauseDuration = currentTime.timeIntervalSince(pt)
+            print("Pause duration: \(pauseDuration) seconds")
 
-            // Store original position
-            originalPlayerPositions[playerId] = players[playerIndex].position
+            // Adjust start times for all active animations
+            var adjustedAnimationData: [UUID: PlayerAnimationData] = [:]
+            for (playerId, animData) in playerAnimationData {
+                // Create a new PlayerAnimationData with the startTime shifted forward
+                let newStartTime = animData.startTime.addingTimeInterval(pauseDuration)
+                let adjustedData = PlayerAnimationData(
+                    pathPoints: animData.pathPoints,
+                    totalDistance: animData.totalDistance,
+                    startTime: newStartTime, // Use the adjusted start time
+                    duration: animData.duration
+                )
+                adjustedAnimationData[playerId] = adjustedData
+                print("Adjusted startTime for player \(playerId) to \(newStartTime)")
+            }
+            // Update the state with the adjusted data
+            playerAnimationData = adjustedAnimationData
 
-            // Calculate path length and duration
-            let totalDistance = calculatePathLength(points: pathPoints)
-            let duration = totalDistance / pixelsPerSecond
+            // Clear the pause time now that we've used it
+            self.pauseTime = nil
 
-            // Ensure minimum duration to avoid division by zero or instant animations
-            let animationDuration = max(0.1, TimeInterval(duration)) // Minimum 0.1 seconds
-
-            // Create animation data
-            let animData = PlayerAnimationData(
-                pathPoints: pathPoints,
-                totalDistance: totalDistance,
-                startTime: startTime,
-                duration: animationDuration
-            )
-            playerAnimationData[playerId] = animData
-
-            // Mark player as moving and set initial position
-            players[playerIndex].isMoving = true
-            players[playerIndex].position = pathPoints.first! // Start at the beginning of the path
-
-            playersToAnimate += 1
-            print("Prepared animation for player \(playerIndex) (ID: \(playerId)) - Path: \(pathId), Duration: \(animationDuration)")
-        }
-
-        // 3. Start the timer if there are players to animate
-        if playersToAnimate > 0 {
-            print("Starting animation timer for \(playersToAnimate) players.")
-            // Remove [weak self] capture
-            animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { timer in
+            // Set state and restart timer
+            playbackState = .playing
+            animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { timer in 
                 self.updateAnimations(timer: timer)
             }
-        } else {
-            print("No players have assigned paths, stopping animation.")
-            playbackState = .stopped // Reset state if nothing to animate
+            print("Animation Resumed.")
+
+        case .stopped:
+            print("Starting animation from stopped state (Resetting)...")
+            playbackState = .playing // Set state early
+
+            // --- Reset Logic (Moved from old stopAnimation) --- 
+            animationTimer?.invalidate() 
+            animationTimer = nil
+            playerAnimationData.removeAll()
+            originalPlayerPositions.removeAll()
+            // Reset basketball positions (if using)
+            // originalBasketballPositions.removeAll()
+            // Reset highlighted paths
+            for i in drawings.indices {
+                drawings[i].isHighlightedDuringAnimation = false
+            }
+            // --- End Reset Logic --- 
+
+            print("Preparing new animation...")
+            let pixelsPerSecond: CGFloat = 275 
+            var playersToAnimate = 0
+            // Use currentTime defined at the start of the function
+
+            // Prepare animation data for players with assigned paths
+            for playerIndex in players.indices {
+                guard let pathId = players[playerIndex].assignedPathId,
+                      let drawing = drawings.first(where: { $0.id == pathId }),
+                      !drawing.points.isEmpty else {
+                    continue // Skip players without valid paths
+                }
+
+                let playerId = players[playerIndex].id
+                // Determine the points to use for animation based on drawing type
+                var animationPathPoints: [CGPoint] = []
+                if drawing.type == .arrow && drawing.points.count >= 2 {
+                    // For arrows, use only the start and end points for a straight line animation
+                    animationPathPoints = [drawing.points.first!, drawing.points.last!]
+                    print("Using straight path for arrow animation: \(animationPathPoints)")
+                } else {
+                    // For other types, use all recorded points
+                    animationPathPoints = drawing.points
+                }
+                
+                // Ensure we have points to animate
+                guard !animationPathPoints.isEmpty else {
+                    print("Skipping player \(playerId): No valid animation points.")
+                    continue
+                }
+
+                // Store original position (current position before animation starts)
+                originalPlayerPositions[playerId] = players[playerIndex].position
+                // Highlight path
+                if let drawingIndex = drawings.firstIndex(where: { $0.id == pathId }) {
+                    drawings[drawingIndex].isHighlightedDuringAnimation = true
+                }
+
+                // Calculate path length and duration using the determined animation path
+                let totalDistance = calculatePathLength(points: animationPathPoints)
+                let duration = totalDistance / pixelsPerSecond
+                let animationDuration = max(0.1, TimeInterval(duration)) 
+
+                // Create animation data with the current time as startTime
+                let animData = PlayerAnimationData(
+                    pathPoints: animationPathPoints, // Use the potentially simplified path
+                    totalDistance: totalDistance,
+                    startTime: currentTime, // Use current time for new animation
+                    duration: animationDuration
+                )
+                playerAnimationData[playerId] = animData
+
+                // Mark player as moving and set initial position to start of the animation path
+                players[playerIndex].isMoving = true
+                players[playerIndex].position = animationPathPoints.first! // Use the start of the determined path
+
+                playersToAnimate += 1
+                print("Prepared animation for player \(playerIndex) (ID: \(playerId)) - Path: \(pathId), Duration: \(animationDuration)")
+            }
+
+            // Start the timer if there are players to animate
+            if playersToAnimate > 0 {
+                print("Starting animation timer for \(playersToAnimate) players.")
+                animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { timer in 
+                    self.updateAnimations(timer: timer)
+                }
+            } else {
+                print("No players have assigned paths, stopping animation.")
+                playbackState = .stopped // Reset state if nothing to animate
+            }
         }
     }
 
-    private func stopAnimation() {
-        print("Stopping animation")
+    // Add state variable for pause time
+    @State private var pauseTime: Date?
 
-        // 1. Invalidate the timer
+    private func pauseAnimation() {
+        print("Pausing animation")
+        guard playbackState == .playing else { 
+            print("Not playing, cannot pause.")
+            return 
+        }
+
+        // 1. Invalidate the timer (stop updates)
         animationTimer?.invalidate()
-        animationTimer = nil // Clear the timer reference
+        animationTimer = nil
 
-        // 2. Reset player positions and state
-        for (playerId, originalPosition) in originalPlayerPositions {
-            if let playerIndex = players.firstIndex(where: { $0.id == playerId }) {
-                players[playerIndex].position = originalPosition
-                players[playerIndex].isMoving = false // Ensure moving flag is reset
-            }
-        }
+        // 2. Record pause time
+        pauseTime = Date()
 
-        // Reset highlighted paths
-        for i in drawings.indices {
-            drawings[i].isHighlightedDuringAnimation = false
-        }
+        // 3. Set state to paused
+        playbackState = .paused
 
-        // 3. Clear animation data
-        playerAnimationData.removeAll()
-        originalPlayerPositions.removeAll() // Clear stored original positions
-
-        // 4. Reset playback state
-        playbackState = .stopped
-
-        // Reset basketball positions (keeping existing logic for now)
-        if !originalBasketballPositions.isEmpty {
-            for i in 0..<min(basketballs.count, originalBasketballPositions.count) {
-                basketballs[i].position = originalBasketballPositions[i]
-            }
-            originalBasketballPositions.removeAll() // Clear stored basketball positions
-        }
-
-        print("Animation stopped and state reset.")
+        print("Animation paused at \(pauseTime!).")
     }
     
     private func handleMove(location: CGPoint) {
@@ -1927,16 +1982,60 @@ struct WhiteboardView: View {
             basketballs: basketballData
         )
 
+        // Print success message *before* attempting to persist
+        print("Preparing to save Play '\(name)' with ID: \(newPlay.id)")
 
         // 4. Persist
         SavedPlayService.shared.savePlay(newPlay)
-        print("Play '\(name)' saved successfully with ID: \(newPlay.id)")
+        // print("Play '\(name)' saved successfully with ID: \(newPlay.id)") // Moved this line up
 
         // 5. Cleanup
         playNameInput = "" // Clear the input field
         showingSaveAlert = false // Dismiss the alert implicitly by state change
 
         // Optional: Add user feedback (e.g., a temporary banner)
+    }
+
+    // Add the completion handler function
+    private func completeAnimation() {
+        print("Completing animation...")
+        // Ensure we are actually playing or paused to complete
+        guard playbackState == .playing || playbackState == .paused else {
+            print("Cannot complete: Animation not playing or paused.")
+            return
+        }
+
+        // 1. Invalidate the timer
+        animationTimer?.invalidate()
+        animationTimer = nil
+
+        // 2. Set state to stopped
+        playbackState = .stopped
+
+        // 3. Clear pause time
+        pauseTime = nil
+
+        // 4. Ensure players are at final positions and not moving
+        //    (Partially done in updateAnimations, but confirm here)
+        for (playerId, animData) in playerAnimationData {
+             if let playerIndex = players.firstIndex(where: { $0.id == playerId }) {
+                if let finalPosition = getPointOnPath(points: animData.pathPoints, progress: 1.0) {
+                    players[playerIndex].position = finalPosition
+                 }
+                players[playerIndex].isMoving = false
+            }
+        }
+
+        // 5. Clear animation data (but keep original positions)
+        playerAnimationData.removeAll()
+        // DO NOT clear originalPlayerPositions here
+
+        // 6. Reset highlighted paths
+        for i in drawings.indices {
+            drawings[i].isHighlightedDuringAnimation = false
+        }
+
+        print("Animation completed and state reset to stopped.")
     }
 }
 
@@ -1951,7 +2050,7 @@ struct ToolbarView: View {
     let onUndo: () -> Void
     let onClear: () -> Void
     let onPlayAnimation: () -> Void
-    let onStopAnimation: () -> Void
+    let onPauseAnimation: () -> Void // Renamed from onStopAnimation
     let onAssignPath: () -> Void
     let onToolChange: (DrawingTool) -> Void
     // Add the new save action closure
@@ -1995,19 +2094,21 @@ struct ToolbarView: View {
             }
             .padding(.trailing, 8)
 
-            // Playback controls
-            if playbackState == .stopped {
-                Button(action: onPlayAnimation) {
-                    Image(systemName: "play.fill")
-                        .foregroundColor(.green) // Set play to green
+            // Playback controls - Updated Logic
+            if playbackState == .playing {
+                // Show Pause button when playing
+                Button(action: onPauseAnimation) { // Call pause action
+                    Image(systemName: "pause.fill") // Use pause icon
+                        .foregroundColor(.red) // Keep red color for pause/stop concept
                 }
             } else {
-                Button(action: onStopAnimation) {
-                    Image(systemName: "stop.fill")
-                        .foregroundColor(.red) // Set stop to red
+                // Show Play button when stopped or paused
+                Button(action: onPlayAnimation) { // Call play/resume action
+                    Image(systemName: "play.fill")
+                        .foregroundColor(.green)
                 }
             }
-
+                    
             Spacer()
 
             // Undo, Clear, and Save buttons
@@ -2438,6 +2539,7 @@ extension View {
 enum PlaybackState {
     case stopped
     case playing
+    case paused // Add paused state
 }
 
 // Add these path helper functions inside WhiteboardView
