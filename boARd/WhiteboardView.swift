@@ -573,6 +573,7 @@ struct WhiteboardView: View {
                         playbackState: $playbackState,
                         isPathAssignmentMode: $isPathAssignmentMode,
                         pathCount: pathConnectionCount,
+                        isEditable: isEditable, // Pass the isEditable state
                         onAddPlayer: {
                             isAddingPlayer = true
                             isAddingBasketball = false
@@ -656,21 +657,31 @@ struct WhiteboardView: View {
             } message: {
                 Text("Are you sure you want to clear the whiteboard? This action cannot be undone.")
             }
-            .alert("Save Play", isPresented: $showingSaveAlert) { // <-- Add alert modifier here
+            // Remove the old Save alert
+            /*
+            .alert("Save Play", isPresented: $showingSaveAlert) { 
                 TextField("Enter play name", text: $playNameInput)
-                    .autocapitalization(.words) // Optional: Adjust capitalization
+                    .autocapitalization(.words) 
                 Button("Save") {
-                    // Confirm this action block is executing
                     print("Alert Save Button Action Triggered. Calling saveCurrentPlay()...") 
-                    // Call the actual save function
                     saveCurrentPlay()
                 }
-                .disabled(playNameInput.isEmpty) // Disable if name is empty
+                .disabled(playNameInput.isEmpty) 
                 Button("Cancel", role: .cancel) {
-                    playNameInput = "" // Clear input on cancel
+                    playNameInput = "" 
                 }
             } message: {
-                 Text("Please enter a name for this play.") // Optional message
+                 Text("Please enter a name for this play.") 
+            }
+            */
+            // Add the sheet modifier instead
+            .sheet(isPresented: $showingSaveAlert) {
+                // Content of the sheet
+                SavePlaySheet(playNameInput: $playNameInput) {
+                    // Action for the Save button in the sheet
+                    saveCurrentPlay()
+                    // Note: saveCurrentPlay sets showingSaveAlert = false, which dismisses the sheet.
+                }
             }
             .ignoresSafeArea(edges: .bottom) // Ensure content can use the full screen
             .onAppear {
@@ -713,19 +724,22 @@ struct WhiteboardView: View {
             )
             .position(x: geometry.size.width / 2, y: geometry.size.height / 2 - 30) // Adjust Y position to account for toolbar
             
-            // Path assignment mode overlay
+            // Path assignment mode overlay (Can be shown in view mode)
             if isPathAssignmentMode {
                 pathAssignmentOverlay()
             }
             
-            // Add player mode overlay
-            if isAddingPlayer {
-                addPlayerOverlay(geometry: geometry)
-            }
-            
-            // Add basketball mode overlay
-            if isAddingBasketball {
-                addBasketballOverlay(geometry: geometry)
+            // Only show Add overlays if editable
+            if isEditable {
+                // Add player mode overlay
+                if isAddingPlayer {
+                    addPlayerOverlay(geometry: geometry)
+                }
+                
+                // Add basketball mode overlay
+                if isAddingBasketball {
+                    addBasketballOverlay(geometry: geometry)
+                }
             }
         }
     }
@@ -781,8 +795,8 @@ struct WhiteboardView: View {
                 )
                 // Set zIndex to ensure it's always on top for catching touches
                 .zIndex(isPathAssignmentMode ? 0 : 5) // Lower zIndex when in path assignment mode
-                // Always detect touches now
-                .allowsHitTesting(!isPathAssignmentMode) // Disable touch detection in path assignment mode
+                // Disable touch detection when not editable
+                .allowsHitTesting(isEditable && !isPathAssignmentMode) // Only allow hits if editable AND not in path assign mode
 
                 // Basketballs - Positioned within this ZStack's coordinate space
                 BasketballsView(
@@ -2045,6 +2059,8 @@ struct ToolbarView: View {
     @Binding var playbackState: PlaybackState
     @Binding var isPathAssignmentMode: Bool
     let pathCount: Int
+    // Add isEditable property
+    let isEditable: Bool
     let onAddPlayer: () -> Void
     let onAddBasketball: () -> Void
     let onUndo: () -> Void
@@ -2057,83 +2073,86 @@ struct ToolbarView: View {
     let onSave: () -> Void
 
     var body: some View {
-        HStack(spacing: 20) { // Add spacing to the HStack
-            // Existing tool buttons...
-            ToolButton(icon: "pencil.tip", selectedTool: $selectedTool, currentTool: .pen, action: { onToolChange(.pen) })
-            ToolButton(icon: "arrow.right", selectedTool: $selectedTool, currentTool: .arrow, action: { onToolChange(.arrow) })
-            ToolButton(icon: "hand.point.up.left", selectedTool: $selectedTool, currentTool: .move, action: { onToolChange(.move) })
-            // Replace ToolButton with a standard Button for specific color
-            Button(action: onAddPlayer) {
-                Image(systemName: "plus.circle")
-                    .font(.title2) // Match style
-                    .foregroundColor(.green) // Set specific color
-                    .frame(width: 44, height: 44) // Match style
-            }
-            // Replace ToolButton with a standard Button for specific color
-            Button(action: onAddBasketball) {
-                Image(systemName: "basketball.fill")
-                    .font(.title2) // Match ToolButton style
-                    .foregroundColor(.orange) // Set specific color
-                    .frame(width: 44, height: 44) // Match ToolButton style
-                    // Add background highlight if needed when selected? For now, just color.
-            }
-
-            Spacer()
-
-            // Path assignment button
-            Button(action: onAssignPath) {
-                HStack {
-                    Image(systemName: isPathAssignmentMode ? "arrow.triangle.pull.fill" : "arrow.triangle.pull")
-                    Text("\(pathCount)") // Show count
+        HStack(spacing: 20) { 
+            if isEditable {
+                // MARK: - Editable Mode Buttons
+                // Disable drawing/editing tools in view mode (These are inside the if now)
+                ToolButton(icon: "pencil.tip", selectedTool: $selectedTool, currentTool: .pen, action: { onToolChange(.pen) })
+                ToolButton(icon: "arrow.right", selectedTool: $selectedTool, currentTool: .arrow, action: { onToolChange(.arrow) })
+                ToolButton(icon: "hand.point.up.left", selectedTool: $selectedTool, currentTool: .move, action: { onToolChange(.move) })
+                // Add buttons
+                Button(action: onAddPlayer) {
+                    Image(systemName: "plus.circle")
+                        .font(.title2).frame(width: 44, height: 44).foregroundColor(.green)
                 }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .background(isPathAssignmentMode ? Color.blue.opacity(0.7) : Color.gray.opacity(0.2))
-                .foregroundColor(isPathAssignmentMode ? .white : .primary)
-                .cornerRadius(8)
-            }
-            .padding(.trailing, 8)
-
-            // Playback controls - Updated Logic
-            if playbackState == .playing {
-                // Show Pause button when playing
-                Button(action: onPauseAnimation) { // Call pause action
-                    Image(systemName: "pause.fill") // Use pause icon
-                        .foregroundColor(.red) // Keep red color for pause/stop concept
+                Button(action: onAddBasketball) {
+                    Image(systemName: "basketball.fill")
+                        .font(.title2).frame(width: 44, height: 44).foregroundColor(.orange)
                 }
+
+                Spacer() // Spacer 1 (Editable Mode)
+
+                // Path assignment button (Only shown when editable)
+                Button(action: onAssignPath) {
+                    HStack {
+                        Image(systemName: isPathAssignmentMode ? "arrow.triangle.pull.fill" : "arrow.triangle.pull")
+                        Text("\(pathCount)")
+                    }
+                    .padding(.vertical, 8).padding(.horizontal, 12)
+                    .background(isPathAssignmentMode ? Color.blue.opacity(0.7) : Color.gray.opacity(0.2))
+                    .foregroundColor(isPathAssignmentMode ? .white : .primary)
+                    .cornerRadius(8)
+                }
+                .padding(.trailing, 8)
+                
+                // Play/Pause also shown in Editable mode here
+                playbackControls // Extracted ViewBuilder
+                
+                Spacer() // Spacer 2 (Editable Mode)
+
+                // Undo/Clear/Save buttons (Only shown when editable)
+                Button(action: onUndo) {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.title2).frame(width: 44, height: 44)
+                }
+                Button(action: onClear) {
+                    Image(systemName: "trash")
+                        .font(.title2).frame(width: 44, height: 44).foregroundColor(.red)
+                }
+                Button(action: onSave) { 
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.title2).frame(width: 44, height: 44)
+                }
+                
             } else {
-                // Show Play button when stopped or paused
-                Button(action: onPlayAnimation) { // Call play/resume action
-                    Image(systemName: "play.fill")
-                        .foregroundColor(.green)
-                }
+                // MARK: - View Mode Buttons (Only Playback)
+                Spacer() // Center the playback controls
+                
+                playbackControls // Extracted ViewBuilder
+                
+                Spacer() // Center the playback controls
             }
-                    
-            Spacer()
-
-            // Undo, Clear, and Save buttons
-            Button(action: onUndo) {
-                Image(systemName: "arrow.uturn.backward")
-                    .font(.title2) // Match size
-                    .frame(width: 44, height: 44) // Match size
-                    // Keep default color (adapts)
-            }
-            Button(action: onClear) {
-                Image(systemName: "trash")
-                    .font(.title2) // Match size
-                    .frame(width: 44, height: 44) // Match size
-                    .foregroundColor(.red) // Set specific color for trash
-            }
-            // Add the Save Button
-            Button(action: onSave) { // Use the new onSave closure
-                Image(systemName: "square.and.arrow.down")
-                    .font(.title2) // Match size
-                    .frame(width: 44, height: 44) // Match size
-                    // Keep default color (adapts)
-            }
-
         }
         .padding() // Restore default padding inside ToolbarView
+        .frame(height: 50) // Give toolbar a consistent height
+    }
+    
+    // Extracted ViewBuilder for playback controls
+    @ViewBuilder
+    private var playbackControls: some View {
+        if playbackState == .playing {
+            Button(action: onPauseAnimation) { 
+                Image(systemName: "pause.fill") 
+                    .font(.title2).frame(width: 44, height: 44) // Ensure size consistency
+                    .foregroundColor(.red) 
+            }
+        } else {
+            Button(action: onPlayAnimation) { 
+                Image(systemName: "play.fill")
+                    .font(.title2).frame(width: 44, height: 44) // Ensure size consistency
+                    .foregroundColor(.green)
+            }
+        }
     }
 }
 
