@@ -883,6 +883,8 @@ struct WhiteboardView: View {
             .contentShape(Rectangle()) // Define hit area for gestures if needed directly on ZStack
             
             // Add debug overlay when in debug mode
+            // Remove the debug info overlay
+            /*
             if debugMode && selectedTool == .move {
                 VStack {
                     Text("DEBUG INFO")
@@ -922,6 +924,7 @@ struct WhiteboardView: View {
                 .position(x: geometry.size.width - 100, y: 100)
                 .zIndex(200)
             }
+            */
         }
     }
     
@@ -940,7 +943,8 @@ struct WhiteboardView: View {
     @ViewBuilder
     private func pathAssignmentOverlay() -> some View {
         VStack {
-            // Status banner at top
+            // Remove the status banner at the top
+            /*
             HStack {
                 Image(systemName: "arrow.triangle.pull")
                     .foregroundColor(.white)
@@ -974,6 +978,7 @@ struct WhiteboardView: View {
             }
             .padding()
             .background(Color.black.opacity(0.7))
+            */
             
             Spacer()
 
