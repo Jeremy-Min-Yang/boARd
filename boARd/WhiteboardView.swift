@@ -487,6 +487,25 @@ struct WhiteboardView: View {
     var playToLoad: SavedPlay? = nil
     var isEditable: Bool = true // Default to true (for new plays)
     
+    // Add this init method
+    init(courtType: CourtType, playToLoad: SavedPlay? = nil, isEditable: Bool = true) {
+        self.courtType = courtType
+        self.playToLoad = playToLoad
+        self.isEditable = isEditable
+
+        // Configure Navigation Bar Appearance to remove shadow/hairline
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithOpaqueBackground() // Use opaque as base
+        // Set background and shadow to clear to hide the default bar and its line
+        appearance.backgroundColor = .clear 
+        appearance.shadowColor = .clear 
+
+        // Apply the appearance globally (can be scoped later if needed)
+        UINavigationBar.appearance().standardAppearance = appearance
+        UINavigationBar.appearance().scrollEdgeAppearance = appearance
+        UINavigationBar.appearance().compactAppearance = appearance
+    }
+
     @State private var selectedTool: DrawingTool = .pen
     @State private var selectedPenStyle: PenStyle = .normal
     @State private var drawings: [Drawing] = []
@@ -538,10 +557,16 @@ struct WhiteboardView: View {
             ZStack(alignment: .top) { // Changed to ZStack with top alignment
                 // Main content area first (will be positioned below toolbar)
                 courtContentView(geometry: geometry)
-                    .padding(.top, 60) // Add padding to position below toolbar
+                    .padding(.top, 61) // Adjust padding slightly (from 60)
                 
-                // Toolbar on top
+                // Toolbar VStack on top
                 VStack(spacing: 0) {
+                    // Remove the custom divider temporarily
+                    /*
+                    Rectangle()
+                        .fill(Color(UIColor(red: 211/255, green: 211/255, blue: 211/255, alpha: 1.0))) // Revert color to #D3D3D3
+                        .frame(height: 0.5)  // Set thickness
+                    */
                     ToolbarView(
                         selectedTool: $selectedTool,
                         selectedPenStyle: $selectedPenStyle,
@@ -597,10 +622,10 @@ struct WhiteboardView: View {
                             showingSaveAlert = true // <-- Trigger alert here
                         }
                     )
-                    .padding(.vertical, 8)
-                    .background(Color(.systemBackground))
-                    .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 2)
+                    .padding(.vertical, 8) // Restore vertical padding around ToolbarView
+                    .background(Color(.secondarySystemBackground)) // Revert background to adaptive secondary
                 }
+                // .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 2) // Remove shadow from VStack
                 
                 // Remove the persistent path counter here
             }
@@ -658,7 +683,9 @@ struct WhiteboardView: View {
     private func courtContentView(geometry: GeometryProxy) -> some View {
         ZStack {
             // Background color
-            Color.white.edgesIgnoringSafeArea(.all)
+            Color.white.edgesIgnoringSafeArea(.all) // Revert background to white
+            // Color.green // Temporary background for debugging
+            //     .edgesIgnoringSafeArea(.all)
             
             // Define constants for consistent sizing
             let courtWidth = geometry.size.width * 0.98
@@ -1926,13 +1953,26 @@ struct ToolbarView: View {
     let onSave: () -> Void
 
     var body: some View {
-        HStack {
+        HStack(spacing: 20) { // Add spacing to the HStack
             // Existing tool buttons...
             ToolButton(icon: "pencil.tip", selectedTool: $selectedTool, currentTool: .pen, action: { onToolChange(.pen) })
             ToolButton(icon: "arrow.right", selectedTool: $selectedTool, currentTool: .arrow, action: { onToolChange(.arrow) })
             ToolButton(icon: "hand.point.up.left", selectedTool: $selectedTool, currentTool: .move, action: { onToolChange(.move) })
-            ToolButton(icon: "plus.circle", selectedTool: $selectedTool, currentTool: .addPlayer, action: { onAddPlayer() })
-            ToolButton(icon: "basketball", selectedTool: $selectedTool, currentTool: .addBasketball, action: { onAddBasketball() })
+            // Replace ToolButton with a standard Button for specific color
+            Button(action: onAddPlayer) {
+                Image(systemName: "plus.circle")
+                    .font(.title2) // Match style
+                    .foregroundColor(.green) // Set specific color
+                    .frame(width: 44, height: 44) // Match style
+            }
+            // Replace ToolButton with a standard Button for specific color
+            Button(action: onAddBasketball) {
+                Image(systemName: "basketball.fill")
+                    .font(.title2) // Match ToolButton style
+                    .foregroundColor(.orange) // Set specific color
+                    .frame(width: 44, height: 44) // Match ToolButton style
+                    // Add background highlight if needed when selected? For now, just color.
+            }
 
             Spacer()
 
@@ -1954,10 +1994,12 @@ struct ToolbarView: View {
             if playbackState == .stopped {
                 Button(action: onPlayAnimation) {
                     Image(systemName: "play.fill")
+                        .foregroundColor(.green) // Set play to green
                 }
             } else {
                 Button(action: onStopAnimation) {
                     Image(systemName: "stop.fill")
+                        .foregroundColor(.red) // Set stop to red
                 }
             }
 
@@ -1966,17 +2008,26 @@ struct ToolbarView: View {
             // Undo, Clear, and Save buttons
             Button(action: onUndo) {
                 Image(systemName: "arrow.uturn.backward")
+                    .font(.title2) // Match size
+                    .frame(width: 44, height: 44) // Match size
+                    // Keep default color (adapts)
             }
             Button(action: onClear) {
                 Image(systemName: "trash")
+                    .font(.title2) // Match size
+                    .frame(width: 44, height: 44) // Match size
+                    .foregroundColor(.red) // Set specific color for trash
             }
             // Add the Save Button
             Button(action: onSave) { // Use the new onSave closure
                 Image(systemName: "square.and.arrow.down")
+                    .font(.title2) // Match size
+                    .frame(width: 44, height: 44) // Match size
+                    // Keep default color (adapts)
             }
 
         }
-        .padding()
+        .padding() // Restore default padding inside ToolbarView
     }
 }
 
@@ -1990,9 +2041,9 @@ struct ToolButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.title3)
+                .font(.title2) // Increase icon font size
                 .foregroundColor(selectedTool == currentTool ? .blue : .gray)
-                .frame(width: 36, height: 36)
+                .frame(width: 44, height: 44) // Increase frame size
                 .background(selectedTool == currentTool ? Color.blue.opacity(0.2) : Color.clear)
                 .cornerRadius(8)
         }
