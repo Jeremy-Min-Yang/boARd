@@ -594,4 +594,10 @@ struct ToolbarView: View {
         }
         .frame(height: 44)
     }
+}
+
+// Simplified ScaledCourtContainer
+struct ScaledCourtContainer: View {
+    let courtType: CourtType
+    let content: AnyView
 } 
