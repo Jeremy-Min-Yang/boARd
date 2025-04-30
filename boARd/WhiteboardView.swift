@@ -554,29 +554,26 @@ struct WhiteboardView: View {
     private var pathConnectionCount: Int {
         return players.filter { $0.assignedPathId != nil }.count
     }
+
+    // In WhiteboardView, add a new @State for timeline progress
+    @State private var playbackProgress: Double = 0.0
+    
+    // Helper to get the max animation duration
+    private var maxAnimationDuration: TimeInterval {
+        playerAnimationData.values.map { $0.duration }.max() ?? 0
+    }
     
     var body: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .top) { // Changed to ZStack with top alignment
-                // Main content area first (will be positioned below toolbar)
-                courtContentView(geometry: geometry)
-                    .padding(.top, 61) // Adjust padding slightly (from 60)
-                
-                // Toolbar VStack on top
+            if !isEditable && pathConnectionCount > 0 && (playbackState == .playing || playbackState == .paused) {
                 VStack(spacing: 0) {
-                    // Remove the custom divider temporarily
-                    /*
-                    Rectangle()
-                        .fill(Color(UIColor(red: 211/255, green: 211/255, blue: 211/255, alpha: 1.0))) // Revert color to #D3D3D3
-                        .frame(height: 0.5)  // Set thickness
-                    */
                     ToolbarView(
                         selectedTool: $selectedTool,
                         selectedPenStyle: $selectedPenStyle,
                         playbackState: $playbackState,
                         isPathAssignmentMode: $isPathAssignmentMode,
                         pathCount: pathConnectionCount,
-                        isEditable: isEditable, // Pass the isEditable state
+                        isEditable: isEditable,
                         onAddPlayer: {
                             isAddingPlayer = true
                             isAddingBasketball = false
@@ -596,109 +593,154 @@ struct WhiteboardView: View {
                             if let lastAction = actions.popLast() {
                                 switch lastAction {
                                 case .drawing:
-                                    if !drawings.isEmpty {
-                                        drawings.removeLast()
-                                    }
+                                    if !drawings.isEmpty { drawings.removeLast() }
                                 case .basketball:
-                                    if !basketballs.isEmpty {
-                                        basketballs.removeLast()
-                                    }
+                                    if !basketballs.isEmpty { basketballs.removeLast() }
                                 case .player:
-                                    if !players.isEmpty {
-                                        players.removeLast()
-                                    }
+                                    if !players.isEmpty { players.removeLast() }
                                 }
                             }
                         },
-                        onClear: {
-                            // Set the state to show the confirmation alert
-                            showClearConfirmation = true
-                        },
-                        onPlayAnimation: {
-                            startAnimation()
-                        },
-                        onPauseAnimation: {
-                            pauseAnimation()
-                        },
-                        onAssignPath: {
-                            togglePathAssignmentMode()
-                        },
-                        onToolChange: { tool in
-                            // Handle tool change
-                            handleToolChange(tool)
-                        },
+                        onClear: { showClearConfirmation = true },
+                        onPlayAnimation: { startAnimation() },
+                        onPauseAnimation: { pauseAnimation() },
+                        onAssignPath: { togglePathAssignmentMode() },
+                        onToolChange: { tool in handleToolChange(tool) },
                         onSave: {
                             print("Save button tapped!")
-                            // Introduce a tiny delay before showing alert
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { // Small delay (e.g., 0.05s)
-                                showingSaveAlert = true
-                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { showingSaveAlert = true }
                         }
                     )
-                    .padding(.vertical, 8) // Restore vertical padding around ToolbarView
-                    .background(Color(.secondarySystemBackground)) // Revert background to adaptive secondary
+                    .padding(.vertical, 8)
+                    .background(Color(.secondarySystemBackground))
+                    courtContentView(geometry: geometry)
+                        .padding(.top, 8)
+                    Spacer().frame(height: 32)
+                    VStack(spacing: 12) {
+                        Slider(value: Binding(
+                            get: { playbackProgress },
+                            set: { newValue in
+                                playbackProgress = newValue
+                                setAnimationProgress(newValue)
+                            }
+                        ), in: 0...1, step: 0.001)
+                        .padding(.horizontal)
+                        HStack {
+                            Text("0:00")
+                            Spacer()
+                            Text(animationDurationString())
+                        }
+                        .font(.caption)
+                        .padding(.horizontal)
+                    }
+                    Spacer().frame(height: 32)
                 }
-                // .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 2) // Remove shadow from VStack
-                
-                // Remove the persistent path counter here
-            }
-            .navigationTitle(courtType == .full ? "Full Court" : "Half Court")
-            .navigationBarTitleDisplayMode(.inline)
-            .alert("Player Limit Reached", isPresented: $showPlayerLimitAlert) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("You can only have up to 5 players on the court at once.")
-            }
-            .alert("Basketball Limit Reached", isPresented: $showBasketballLimitAlert) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("You can only have one basketball on the court at a time.")
-            }
-            // Add the confirmation alert modifier
-            .alert("Clear Whiteboard?", isPresented: $showClearConfirmation) {
-                Button("Clear", role: .destructive) {
-                    // Perform the clear action
-                    drawings.removeAll()
-                    players.removeAll()
-                    basketballs.removeAll()
-                    actions.removeAll()
+                .ignoresSafeArea(edges: .bottom)
+                // ...alerts, sheets, etc. (move them outside the VStack if needed)...
+            } else {
+                ZStack(alignment: .top) {
+                    courtContentView(geometry: geometry)
+                        .padding(.top, 61)
+                    VStack(spacing: 0) {
+                        ToolbarView(
+                            selectedTool: $selectedTool,
+                            selectedPenStyle: $selectedPenStyle,
+                            playbackState: $playbackState,
+                            isPathAssignmentMode: $isPathAssignmentMode,
+                            pathCount: pathConnectionCount,
+                            isEditable: isEditable,
+                            onAddPlayer: {
+                                isAddingPlayer = true
+                                isAddingBasketball = false
+                                isAddingOpponent = false
+                            },
+                            onAddBasketball: {
+                                isAddingBasketball = true
+                                isAddingPlayer = false
+                                isAddingOpponent = false
+                            },
+                            onAddOpponent: {
+                                isAddingOpponent = true
+                                isAddingPlayer = false
+                                isAddingBasketball = false
+                            },
+                            onUndo: {
+                                if let lastAction = actions.popLast() {
+                                    switch lastAction {
+                                    case .drawing:
+                                        if !drawings.isEmpty { drawings.removeLast() }
+                                    case .basketball:
+                                        if !basketballs.isEmpty { basketballs.removeLast() }
+                                    case .player:
+                                        if !players.isEmpty { players.removeLast() }
+                                    }
+                                }
+                            },
+                            onClear: { showClearConfirmation = true },
+                            onPlayAnimation: { startAnimation() },
+                            onPauseAnimation: { pauseAnimation() },
+                            onAssignPath: { togglePathAssignmentMode() },
+                            onToolChange: { tool in handleToolChange(tool) },
+                            onSave: {
+                                print("Save button tapped!")
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { showingSaveAlert = true }
+                            }
+                        )
+                        .padding(.vertical, 8)
+                        .background(Color(.secondarySystemBackground))
+                    }
                 }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("Are you sure you want to clear the whiteboard? This action cannot be undone.")
             }
-            // Remove the old Save alert
-            /*
-            .alert("Save Play", isPresented: $showingSaveAlert) { 
-                TextField("Enter play name", text: $playNameInput)
-                    .autocapitalization(.words) 
-                Button("Save") {
-                    print("Alert Save Button Action Triggered. Calling saveCurrentPlay()...") 
-                    saveCurrentPlay()
-                }
-                .disabled(playNameInput.isEmpty) 
-                Button("Cancel", role: .cancel) {
-                    playNameInput = "" 
-                }
-            } message: {
-                 Text("Please enter a name for this play.") 
+        }
+        .navigationTitle(courtType == .full ? "Full Court" : "Half Court")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("Player Limit Reached", isPresented: $showPlayerLimitAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("You can only have up to 5 players on the court at once.")
+        }
+        .alert("Basketball Limit Reached", isPresented: $showBasketballLimitAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("You can only have one basketball on the court at a time.")
+        }
+        // Add the confirmation alert modifier
+        .alert("Clear Whiteboard?", isPresented: $showClearConfirmation) {
+            Button("Clear", role: .destructive) {
+                // Perform the clear action
+                drawings.removeAll()
+                players.removeAll()
+                basketballs.removeAll()
+                actions.removeAll()
             }
-            */
-            // Add the sheet modifier instead
-            .sheet(isPresented: $showingSaveAlert) {
-                // Content of the sheet
-                SavePlaySheet(playNameInput: $playNameInput) {
-                    // Action for the Save button in the sheet
-                    saveCurrentPlay()
-                    // Note: saveCurrentPlay sets showingSaveAlert = false, which dismisses the sheet.
-                }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Are you sure you want to clear the whiteboard? This action cannot be undone.")
+        }
+        // Remove the old Save alert
+        /*
+        .alert("Save Play", isPresented: $showingSaveAlert) { 
+            TextField("Enter play name", text: $playNameInput)
+                .autocapitalization(.words) 
+            Button("Save") {
+                print("Alert Save Button Action Triggered. Calling saveCurrentPlay()...") 
+                saveCurrentPlay()
             }
-            .ignoresSafeArea(edges: .bottom) // Ensure content can use the full screen
-            .onAppear {
-                // Load play data if provided
-                if let play = playToLoad {
-                    loadPlayData(play)
-                }
+            .disabled(playNameInput.isEmpty) 
+            Button("Cancel", role: .cancel) {
+                playNameInput = "" 
+            }
+        } message: {
+             Text("Please enter a name for this play.") 
+        }
+        */
+        // Add the sheet modifier instead
+        .sheet(isPresented: $showingSaveAlert) {
+            // Content of the sheet
+            SavePlaySheet(playNameInput: $playNameInput) {
+                // Action for the Save button in the sheet
+                saveCurrentPlay()
+                // Note: saveCurrentPlay sets showingSaveAlert = false, which dismisses the sheet.
             }
         }
     }
@@ -1600,49 +1642,38 @@ struct WhiteboardView: View {
     private func updateAnimations(timer: Timer) {
         let currentTime = Date()
         var allAnimationsComplete = true
-
+        var maxProgress: Double = 0.0
+        let maxDuration = maxAnimationDuration
         for (playerId, animData) in playerAnimationData {
-            // Find the player index using the ID
             guard let playerIndex = players.firstIndex(where: { $0.id == playerId }) else {
                 print("Warning: Could not find player with ID \(playerId) during animation update.")
-                // Potentially remove this entry from playerAnimationData if player no longer exists
                 continue
             }
-
             let elapsedTime = currentTime.timeIntervalSince(animData.startTime)
-            var progress = elapsedTime / animData.duration
-
-            // Clamp progress between 0 and 1
-            progress = max(0, min(1, progress))
-
-            // Get the new position based on progress
-            if let newPosition = getPointOnPath(points: animData.pathPoints, progress: progress) {
-                // Update player position directly - NO withAnimation here!
+            let timelineProgress = maxDuration > 0 ? min(elapsedTime / maxDuration, 1.0) : 0.0
+            // For each player, their own progress is relative to their own duration
+            let playerProgress = min(timelineProgress * maxDuration / animData.duration, 1.0)
+            maxProgress = max(maxProgress, timelineProgress)
+            if let newPosition = getPointOnPath(points: animData.pathPoints, progress: playerProgress) {
                 players[playerIndex].position = newPosition
-                players[playerIndex].isMoving = progress < 1.0 // Update isMoving based on progress
+                players[playerIndex].isMoving = playerProgress < 1.0 && timelineProgress < 1.0
             } else {
-                print("Warning: Could not get point on path for player \(playerId) at progress \(progress)")
+                print("Warning: Could not get point on path for player \(playerId) at progress \(playerProgress)")
             }
-
-            // Check if this animation is still ongoing
-            if progress < 1.0 {
+            if playerProgress < 1.0 && timelineProgress < 1.0 {
                 allAnimationsComplete = false
             } else {
-                 // Ensure player is marked as not moving if their animation is done
-                 if players[playerIndex].isMoving {
+                if players[playerIndex].isMoving {
                     players[playerIndex].isMoving = false
-                 }
-                 // Ensure player is snapped to final position
-                 if let finalPosition = getPointOnPath(points: animData.pathPoints, progress: 1.0) {
+                }
+                if let finalPosition = getPointOnPath(points: animData.pathPoints, progress: 1.0) {
                     players[playerIndex].position = finalPosition
-                 }
+                }
             }
         }
-
-        // If all animations are done, call completeAnimation
+        playbackProgress = maxProgress
         if allAnimationsComplete {
             print("All animations reported complete.")
-            // Call completeAnimation instead of pauseAnimation
             completeAnimation()
         }
     }
@@ -2133,6 +2164,29 @@ struct WhiteboardView: View {
             normalizedPosition: CGPoint(x: normalizedX, y: normalizedY)
         )
         opponents.append(newOpponent)
+    }
+
+    // Add helper to set animation progress
+    private func setAnimationProgress(_ progress: Double) {
+        let maxDuration = maxAnimationDuration
+        let timelineTime = progress * maxDuration
+        for (playerId, animData) in playerAnimationData {
+            if let playerIndex = players.firstIndex(where: { $0.id == playerId }) {
+                let playerProgress = min(timelineTime / animData.duration, 1.0)
+                if let newPosition = getPointOnPath(points: animData.pathPoints, progress: CGFloat(playerProgress)) {
+                    players[playerIndex].position = newPosition
+                    players[playerIndex].isMoving = (playerProgress < 1.0)
+                }
+            }
+        }
+    }
+
+    // Add helper to get animation duration string (max duration among all players)
+    private func animationDurationString() -> String {
+        let maxDuration = maxAnimationDuration
+        let minutes = Int(maxDuration) / 60
+        let seconds = Int(maxDuration) % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 
