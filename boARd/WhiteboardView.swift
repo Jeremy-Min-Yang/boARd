@@ -331,7 +331,7 @@ struct WhiteboardView: View {
                     drawings: $drawings,
                     onAssignPath: assignPathToPlayer
                 )
-                .zIndex(selectedTool == .move || playbackState == .playing ? 10 : 3)
+                .zIndex(20)
                 BasketballsView(
                     courtType: courtType,
                     basketballs: $basketballs,
