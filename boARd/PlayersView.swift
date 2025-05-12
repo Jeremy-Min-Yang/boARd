@@ -13,7 +13,7 @@ struct PlayersView: View {
     private func getPlayerColor(_ player: PlayerCircle) -> Color { .green }
     var body: some View {
         ZStack {
-            ForEach(players.indices, id: \ .self) { index in
+            ForEach(players.indices, id: \.self) { index in
                 let player = players[index]
                 let playerColor = getPlayerColor(player)
                 ZStack {

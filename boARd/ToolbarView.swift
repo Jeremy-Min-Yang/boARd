@@ -55,10 +55,6 @@ struct ToolbarView: View {
                 Button(action: onSave) {
                     Image(systemName: "square.and.arrow.down").font(.title2).frame(width: 44, height: 44)
                 }
-            } else {
-                Spacer()
-                playbackControls
-                Spacer()
             }
         }
         .padding()

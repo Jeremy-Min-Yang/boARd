@@ -54,6 +54,7 @@ enum Action {
     case drawing(Drawing)
     case basketball(BasketballItem)
     case player(PlayerCircle)
+    case opponent(OpponentCircle)
 }
 
 // MARK: - Structs

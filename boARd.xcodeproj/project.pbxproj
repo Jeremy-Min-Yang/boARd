@@ -7,6 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0917D4F22DD1FEF700F49352 /* BasketballsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4E72DD1FEF700F49352 /* BasketballsView.swift */; };
+		0917D4F32DD1FEF700F49352 /* DrawingLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4E92DD1FEF700F49352 /* DrawingLayer.swift */; };
+		0917D4F42DD1FEF700F49352 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4EA2DD1FEF700F49352 /* Extensions.swift */; };
+		0917D4F52DD1FEF700F49352 /* TouchTypeDetectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4F12DD1FEF700F49352 /* TouchTypeDetectionView.swift */; };
+		0917D4F62DD1FEF700F49352 /* ToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4F02DD1FEF700F49352 /* ToolbarView.swift */; };
+		0917D4F72DD1FEF700F49352 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4EB2DD1FEF700F49352 /* Models.swift */; };
+		0917D4F82DD1FEF700F49352 /* CourtImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4E82DD1FEF700F49352 /* CourtImageView.swift */; };
+		0917D4F92DD1FEF700F49352 /* OpponentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4EC2DD1FEF700F49352 /* OpponentsView.swift */; };
+		0917D4FA2DD1FEF700F49352 /* PlayersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4ED2DD1FEF700F49352 /* PlayersView.swift */; };
+		0917D4FB2DD1FEF700F49352 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0917D4EE2DD1FEF700F49352 /* Preview Assets.xcassets */; };
 		09758C152DAD2E9F00AC52ED /* SavePlaySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09758C142DAD2E9F00AC52ED /* SavePlaySheet.swift */; };
 		09CCAB642DAC1B06001FC93E /* SavedPlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09CCAB632DAC1B06001FC93E /* SavedPlay.swift */; };
 		58A4C39128F0E72C00E16278 /* boARdApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4C39028F0E72C00E16278 /* boARdApp.swift */; };
@@ -17,6 +27,16 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0917D4E72DD1FEF700F49352 /* BasketballsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasketballsView.swift; sourceTree = "<group>"; };
+		0917D4E82DD1FEF700F49352 /* CourtImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourtImageView.swift; sourceTree = "<group>"; };
+		0917D4E92DD1FEF700F49352 /* DrawingLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawingLayer.swift; sourceTree = "<group>"; };
+		0917D4EA2DD1FEF700F49352 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
+		0917D4EB2DD1FEF700F49352 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		0917D4EC2DD1FEF700F49352 /* OpponentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpponentsView.swift; sourceTree = "<group>"; };
+		0917D4ED2DD1FEF700F49352 /* PlayersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayersView.swift; sourceTree = "<group>"; };
+		0917D4EE2DD1FEF700F49352 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		0917D4F02DD1FEF700F49352 /* ToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarView.swift; sourceTree = "<group>"; };
+		0917D4F12DD1FEF700F49352 /* TouchTypeDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TouchTypeDetectionView.swift; sourceTree = "<group>"; };
 		09758C142DAD2E9F00AC52ED /* SavePlaySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavePlaySheet.swift; sourceTree = "<group>"; };
 		09CCAB632DAC1B06001FC93E /* SavedPlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedPlay.swift; sourceTree = "<group>"; };
 		58A4C38D28F0E72C00E16278 /* boARd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = boARd.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -39,6 +59,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0917D4EF2DD1FEF700F49352 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				0917D4EE2DD1FEF700F49352 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
 		58A4C38428F0E72C00E16278 = {
 			isa = PBXGroup;
 			children = (
@@ -60,6 +88,16 @@
 			children = (
 				58A4C39028F0E72C00E16278 /* boARdApp.swift */,
 				58A4C39228F0E72C00E16278 /* HomeScreen.swift */,
+				0917D4E72DD1FEF700F49352 /* BasketballsView.swift */,
+				0917D4E82DD1FEF700F49352 /* CourtImageView.swift */,
+				0917D4E92DD1FEF700F49352 /* DrawingLayer.swift */,
+				0917D4EA2DD1FEF700F49352 /* Extensions.swift */,
+				0917D4EB2DD1FEF700F49352 /* Models.swift */,
+				0917D4EC2DD1FEF700F49352 /* OpponentsView.swift */,
+				0917D4ED2DD1FEF700F49352 /* PlayersView.swift */,
+				0917D4EF2DD1FEF700F49352 /* Preview Content */,
+				0917D4F02DD1FEF700F49352 /* ToolbarView.swift */,
+				0917D4F12DD1FEF700F49352 /* TouchTypeDetectionView.swift */,
 				58A4C39F28F0E74700E16278 /* WhiteboardView.swift */,
 				09758C142DAD2E9F00AC52ED /* SavePlaySheet.swift */,
 				09CCAB632DAC1B06001FC93E /* SavedPlay.swift */,
@@ -136,6 +174,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				58A4C39828F0E72E00E16278 /* Preview Assets.xcassets in Resources */,
+				0917D4FB2DD1FEF700F49352 /* Preview Assets.xcassets in Resources */,
 				58A4C39528F0E72E00E16278 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -150,6 +189,15 @@
 				58A4C39328F0E72C00E16278 /* HomeScreen.swift in Sources */,
 				58A4C3A028F0E74700E16278 /* WhiteboardView.swift in Sources */,
 				58A4C39128F0E72C00E16278 /* boARdApp.swift in Sources */,
+				0917D4F22DD1FEF700F49352 /* BasketballsView.swift in Sources */,
+				0917D4F32DD1FEF700F49352 /* DrawingLayer.swift in Sources */,
+				0917D4F42DD1FEF700F49352 /* Extensions.swift in Sources */,
+				0917D4F52DD1FEF700F49352 /* TouchTypeDetectionView.swift in Sources */,
+				0917D4F62DD1FEF700F49352 /* ToolbarView.swift in Sources */,
+				0917D4F72DD1FEF700F49352 /* Models.swift in Sources */,
+				0917D4F82DD1FEF700F49352 /* CourtImageView.swift in Sources */,
+				0917D4F92DD1FEF700F49352 /* OpponentsView.swift in Sources */,
+				0917D4FA2DD1FEF700F49352 /* PlayersView.swift in Sources */,
 				09CCAB642DAC1B06001FC93E /* SavedPlay.swift in Sources */,
 				09758C152DAD2E9F00AC52ED /* SavePlaySheet.swift in Sources */,
 			);
