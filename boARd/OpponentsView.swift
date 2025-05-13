@@ -7,35 +7,36 @@ struct OpponentsView: View {
     @Binding var currentTouchType: TouchInputType
     @Binding var selectedTool: DrawingTool
     var body: some View {
-        ZStack {
-            ForEach(opponents.indices, id: \ .self) { index in
-                let opponent = opponents[index]
-                OpponentCircleView(
-                    position: opponent.position,
-                    number: opponent.number,
-                    color: .red,
-                    isMoving: opponent.isMoving
-                )
-                .position(opponent.position)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            if selectedTool == .move {
-                                draggedOpponentIndex = index
-                                opponents[index].position = value.location
+        GeometryReader { geometry in
+            ZStack {
+                ForEach(opponents.indices, id: \.self) { index in
+                    let opponent = opponents[index]
+                    OpponentCircleView(
+                        position: virtualToScreen(opponent.position, courtType: courtType, viewSize: geometry.size),
+                        number: opponent.number,
+                        color: .red,
+                        isMoving: opponent.isMoving
+                    )
+                    .position(virtualToScreen(opponent.position, courtType: courtType, viewSize: geometry.size))
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                if selectedTool == .move {
+                                    draggedOpponentIndex = index
+                                    let virtualPos = screenToVirtual(value.location, courtType: courtType, viewSize: geometry.size)
+                                    opponents[index].position = virtualPos
+                                }
                             }
-                        }
-                        .onEnded { value in
-                            if selectedTool == .move && draggedOpponentIndex == index {
-                                let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
-                                let normalizedX = value.location.x / boundary.width
-                                let normalizedY = value.location.y / boundary.height
-                                opponents[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                            }
-                        },
-                    including: selectedTool == .move ? .all : .subviews
-                )
-                .zIndex(opponent.isMoving ? 20 : 1)
+                            .onEnded { value in
+                                if selectedTool == .move && draggedOpponentIndex == index {
+                                    let virtualPos = screenToVirtual(value.location, courtType: courtType, viewSize: geometry.size)
+                                    opponents[index].normalizedPosition = CGPoint(x: virtualPos.x / courtType.virtualCourtSize.width, y: virtualPos.y / courtType.virtualCourtSize.height)
+                                }
+                            },
+                        including: selectedTool == .move ? .all : .subviews
+                    )
+                    .zIndex(opponent.isMoving ? 20 : 1)
+                }
             }
         }
     }

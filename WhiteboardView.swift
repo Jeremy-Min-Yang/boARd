@@ -435,6 +435,155 @@ struct WhiteboardView: View {
             drawings.append(SavedPlayService.convertToDrawing(drawingData: drawingData))
         }
     }
+
+    @ViewBuilder
+    private func addPlayerOverlay(geometry: GeometryProxy) -> some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .edgesIgnoringSafeArea(.all)
+                .onTapGesture { isAddingPlayer = false }
+            VStack {
+                Text("Tap within the court to add player")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(10)
+                    .padding(.top, 100)
+                Spacer()
+            }
+            .allowsHitTesting(false)
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onEnded { value in
+                            let tapPosition = value.location
+                            let virtualPos = screenToVirtual(tapPosition, courtType: courtType, viewSize: geometry.size)
+                            // Check if within bounds
+                            let size = courtType.virtualCourtSize
+                            if virtualPos.x >= 0 && virtualPos.x <= size.width && virtualPos.y >= 0 && virtualPos.y <= size.height {
+                                addPlayerAt(position: virtualPos)
+                            }
+                            isAddingPlayer = false
+                        }
+                )
+        }
+    }
+
+    @ViewBuilder
+    private func addBasketballOverlay(geometry: GeometryProxy) -> some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .edgesIgnoringSafeArea(.all)
+                .onTapGesture { isAddingBasketball = false }
+            VStack {
+                Text("Tap within the court to add basketball")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(10)
+                    .padding(.top, 100)
+                Spacer()
+            }
+            .allowsHitTesting(false)
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onEnded { value in
+                            let tapPosition = value.location
+                            let virtualPos = screenToVirtual(tapPosition, courtType: courtType, viewSize: geometry.size)
+                            let size = courtType.virtualCourtSize
+                            if virtualPos.x >= 0 && virtualPos.x <= size.width && virtualPos.y >= 0 && virtualPos.y <= size.height {
+                                addBasketballAt(position: virtualPos)
+                            }
+                            isAddingBasketball = false
+                        }
+                )
+        }
+    }
+
+    @ViewBuilder
+    private func addOpponentOverlay(geometry: GeometryProxy) -> some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .edgesIgnoringSafeArea(.all)
+                .onTapGesture { isAddingOpponent = false }
+            VStack {
+                Text("Tap within the court to add opponent")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(10)
+                    .padding(.top, 100)
+                Spacer()
+            }
+            .allowsHitTesting(false)
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onEnded { value in
+                            let tapPosition = value.location
+                            let virtualPos = screenToVirtual(tapPosition, courtType: courtType, viewSize: geometry.size)
+                            let size = courtType.virtualCourtSize
+                            if virtualPos.x >= 0 && virtualPos.x <= size.width && virtualPos.y >= 0 && virtualPos.y <= size.height {
+                                addOpponentAt(position: virtualPos)
+                            }
+                            isAddingOpponent = false
+                        }
+                )
+        }
+    }
+
+    private func addPlayerAt(position: CGPoint) {
+        if players.count >= 5 {
+            showPlayerLimitAlert = true
+            return
+        }
+        let size = courtType.virtualCourtSize
+        let normalizedX = position.x / size.width
+        let normalizedY = position.y / size.height
+        let newPlayer = PlayerCircle(
+            position: position,
+            number: players.count + 1,
+            normalizedPosition: CGPoint(x: normalizedX, y: normalizedY)
+        )
+        players.append(newPlayer)
+        actions.append(.player(newPlayer))
+    }
+
+    private func addBasketballAt(position: CGPoint) {
+        if basketballs.count >= 1 {
+            showBasketballLimitAlert = true
+            return
+        }
+        let size = courtType.virtualCourtSize
+        let normalizedX = position.x / size.width
+        let normalizedY = position.y / size.height
+        let newBasketball = BasketballItem(
+            position: position,
+            normalizedPosition: CGPoint(x: normalizedX, y: normalizedY)
+        )
+        basketballs.append(newBasketball)
+        actions.append(.basketball(newBasketball))
+    }
+
+    private func addOpponentAt(position: CGPoint) {
+        let size = courtType.virtualCourtSize
+        let normalizedX = position.x / size.width
+        let normalizedY = position.y / size.height
+        let newOpponent = OpponentCircle(
+            position: position,
+            number: opponents.count + 1,
+            normalizedPosition: CGPoint(x: normalizedX, y: normalizedY)
+        )
+        opponents.append(newOpponent)
+        actions.append(.opponent(newOpponent))
+    }
 }
 
 struct ToolbarView: View {

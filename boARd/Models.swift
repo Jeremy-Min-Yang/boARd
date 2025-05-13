@@ -114,4 +114,39 @@ struct PlayerAnimationData {
     let totalDistance: CGFloat
     let startTime: Date
     let duration: TimeInterval
+}
+
+extension CourtType {
+    var virtualCourtSize: CGSize {
+        switch self {
+        case .full:
+            return CGSize(width: 1072, height: 569)
+        case .half:
+            return CGSize(width: 700, height: 855)
+        }
+    }
+}
+
+// MARK: - Virtual/Screen Coordinate Mapping
+
+func virtualToScreen(_ point: CGPoint, courtType: CourtType, viewSize: CGSize) -> CGPoint {
+    let courtSize = courtType.virtualCourtSize
+    let scale = min(viewSize.width / courtSize.width, viewSize.height / courtSize.height)
+    let offsetX = (viewSize.width - courtSize.width * scale) / 2
+    let offsetY = (viewSize.height - courtSize.height * scale) / 2
+    return CGPoint(
+        x: point.x * scale + offsetX,
+        y: point.y * scale + offsetY
+    )
+}
+
+func screenToVirtual(_ point: CGPoint, courtType: CourtType, viewSize: CGSize) -> CGPoint {
+    let courtSize = courtType.virtualCourtSize
+    let scale = min(viewSize.width / courtSize.width, viewSize.height / courtSize.height)
+    let offsetX = (viewSize.width - courtSize.width * scale) / 2
+    let offsetY = (viewSize.height - courtSize.height * scale) / 2
+    return CGPoint(
+        x: (point.x - offsetX) / scale,
+        y: (point.y - offsetY) / scale
+    )
 } 

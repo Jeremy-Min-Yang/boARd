@@ -16,7 +16,7 @@ struct DrawingLayer: View {
     var body: some View {
         Canvas { context, size in
             for drawing in drawings {
-                let path = drawing.path
+                let screenPoints = drawing.points.map { virtualToScreen($0, courtType: courtType, viewSize: size) }
                 var drawingColor = drawing.color
                 var lineWidth = drawing.lineWidth
                 if isPathAssignmentMode && selectedDrawingId == drawing.id {
@@ -27,13 +27,20 @@ struct DrawingLayer: View {
                     lineWidth += 2
                 }
                 if drawing.type == .arrow {
-                    if drawing.points.count >= 5 {
-                        let lastPoint = drawing.points.last!
-                        let firstPoint = drawing.points.first!
+                    if screenPoints.count >= 5 {
+                        let lastPoint = screenPoints.last!
+                        let firstPoint = screenPoints.first!
                         let arrowPath = createArrowPath(from: firstPoint, to: lastPoint)
                         context.stroke(arrowPath, with: .color(drawingColor), lineWidth: lineWidth)
                     }
                 } else {
+                    var path = Path()
+                    if let first = screenPoints.first {
+                        path.move(to: first)
+                        for pt in screenPoints.dropFirst() {
+                            path.addLine(to: pt)
+                        }
+                    }
                     context.stroke(
                         path,
                         with: .color(drawingColor),
@@ -42,15 +49,22 @@ struct DrawingLayer: View {
                 }
             }
             if let drawing = currentDrawing {
-                let path = drawing.path
+                let screenPoints = drawing.points.map { virtualToScreen($0, courtType: courtType, viewSize: size) }
                 if drawing.type == .arrow {
-                    if drawing.points.count >= 5 {
-                        let lastPoint = drawing.points.last!
-                        let firstPoint = drawing.points.first!
+                    if screenPoints.count >= 5 {
+                        let lastPoint = screenPoints.last!
+                        let firstPoint = screenPoints.first!
                         let arrowPath = createArrowPath(from: firstPoint, to: lastPoint)
                         context.stroke(arrowPath, with: .color(drawing.color), lineWidth: drawing.lineWidth)
                     }
                 } else {
+                    var path = Path()
+                    if let first = screenPoints.first {
+                        path.move(to: first)
+                        for pt in screenPoints.dropFirst() {
+                            path.addLine(to: pt)
+                        }
+                    }
                     context.stroke(
                         path,
                         with: .color(drawing.color),
@@ -65,7 +79,8 @@ struct DrawingLayer: View {
                 .onEnded { value in
                     if isPathAssignmentMode {
                         let location = value.location
-                        handlePathSelection(at: location)
+                        let virtualLocation = screenToVirtual(location, courtType: courtType, viewSize: CGSize(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
+                        handlePathSelection(at: virtualLocation)
                     }
                 }
         )

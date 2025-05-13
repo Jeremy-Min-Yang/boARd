@@ -12,50 +12,51 @@ struct PlayersView: View {
     var onAssignPath: (UUID, Int) -> Void
     private func getPlayerColor(_ player: PlayerCircle) -> Color { .green }
     var body: some View {
-        ZStack {
-            ForEach(players.indices, id: \.self) { index in
-                let player = players[index]
-                let playerColor = getPlayerColor(player)
-                ZStack {
-                    if player.assignedPathId != nil {
-                        Circle()
-                            .stroke(Color.green, lineWidth: 3)
-                            .frame(width: 56, height: 56)
+        GeometryReader { geometry in
+            ZStack {
+                ForEach(players.indices, id: \.self) { index in
+                    let player = players[index]
+                    let playerColor = getPlayerColor(player)
+                    ZStack {
+                        if player.assignedPathId != nil {
+                            Circle()
+                                .stroke(Color.green, lineWidth: 3)
+                                .frame(width: 56, height: 56)
+                        }
+                        PlayerCircleView(
+                            position: virtualToScreen(player.position, courtType: courtType, viewSize: geometry.size),
+                            number: player.number,
+                            color: playerColor,
+                            isMoving: player.isMoving
+                        )
                     }
-                    PlayerCircleView(
-                        position: player.position,
-                        number: player.number,
-                        color: playerColor,
-                        isMoving: player.isMoving
+                    .position(virtualToScreen(player.position, courtType: courtType, viewSize: geometry.size))
+                    .onTapGesture {
+                        if isPathAssignmentMode, let drawingId = selectedDrawingId {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                onAssignPath(drawingId, index)
+                            }
+                        }
+                    }
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                if selectedTool == .move && !isPathAssignmentMode {
+                                    draggedPlayerIndex = index
+                                    let virtualPos = screenToVirtual(value.location, courtType: courtType, viewSize: geometry.size)
+                                    players[index].position = virtualPos
+                                }
+                            }
+                            .onEnded { value in
+                                if selectedTool == .move && !isPathAssignmentMode && draggedPlayerIndex == index {
+                                    let virtualPos = screenToVirtual(value.location, courtType: courtType, viewSize: geometry.size)
+                                    players[index].normalizedPosition = CGPoint(x: virtualPos.x / courtType.virtualCourtSize.width, y: virtualPos.y / courtType.virtualCourtSize.height)
+                                }
+                            },
+                        including: selectedTool == .move ? .all : .subviews
                     )
+                    .zIndex(player.isMoving ? 20 : 1)
                 }
-                .position(player.position)
-                .onTapGesture {
-                    if isPathAssignmentMode, let drawingId = selectedDrawingId {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            onAssignPath(drawingId, index)
-                        }
-                    }
-                }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            if selectedTool == .move && !isPathAssignmentMode {
-                                draggedPlayerIndex = index
-                                players[index].position = value.location
-                            }
-                        }
-                        .onEnded { value in
-                            if selectedTool == .move && !isPathAssignmentMode && draggedPlayerIndex == index {
-                                let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
-                                let normalizedX = value.location.x / boundary.width
-                                let normalizedY = value.location.y / boundary.height
-                                players[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
-                            }
-                        },
-                    including: selectedTool == .move ? .all : .subviews
-                )
-                .zIndex(player.isMoving ? 20 : 1)
             }
         }
     }
