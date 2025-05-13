@@ -57,6 +57,29 @@ enum Action {
     case opponent(OpponentCircle)
 }
 
+enum MainTab: Int, CaseIterable, Identifiable {
+    case home, team, add, plays, profile
+    var id: Int { rawValue }
+    var iconName: String {
+        switch self {
+        case .home: return "house"
+        case .team: return "person.3"
+        case .add: return "plus.circle.fill"
+        case .plays: return "book"
+        case .profile: return "person.circle"
+        }
+    }
+    var label: String {
+        switch self {
+        case .home: return "Home"
+        case .team: return "Team"
+        case .add: return "Add"
+        case .plays: return "Plays"
+        case .profile: return "Profile"
+        }
+    }
+}
+
 // MARK: - Structs
 
 struct DrawingBoundary {
