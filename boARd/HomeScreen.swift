@@ -20,45 +20,28 @@ struct HomeScreen: View {
             Group {
                 switch selectedTab {
                 case .home:
-                    VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
                         Spacer().frame(height: 40)
-                        // Logo and welcome
-                        Image(systemName: "basketball")
-                            .resizable()
-                            .frame(width: 60, height: 60)
-                            .foregroundColor(.blue)
+                        // App name and welcome
                         Text("boARd")
                             .font(.largeTitle)
                             .fontWeight(.bold)
                             .padding(.top, 8)
-                        Text("Welcome back, Coach!")
-                            .font(.title3)
-                            .foregroundColor(.secondary)
-                            .padding(.bottom, 24)
-                        // Create New Play button
-                        Button(action: { showCourtOptions = true }) {
-                            HStack {
-                                Image(systemName: "plus")
-                                Text("Create New Play")
-                                    .fontWeight(.semibold)
-                            }
-                            .padding()
-                            .frame(maxWidth: 260)
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(14)
-                            .shadow(radius: 4)
+                        HStack {
+                            Spacer()
+                            Text("Welcome back, Coach!")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                            Spacer()
                         }
-                        .padding(.bottom, 32)
+                        .padding(.bottom, 24)
                         // Recent Plays
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Recent Plays")
                                 .font(.headline)
-                                .padding(.leading)
                             if savedPlays.isEmpty {
                                 Text("No recent plays yet.")
                                     .foregroundColor(.gray)
-                                    .padding(.leading)
                             } else {
                                 ForEach(savedPlays.prefix(3)) { play in
                                     Button(action: {
@@ -91,7 +74,8 @@ struct HomeScreen: View {
                         .padding(.top, 16)
                         Spacer()
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.horizontal, 20)
                     // Court selection overlay
                     if showCourtOptions {
                         CourtSelectionView(isPresented: $showCourtOptions, onCourtSelected: { courtType in
@@ -99,7 +83,10 @@ struct HomeScreen: View {
                             selectedPlay = nil
                             editMode = true
                             viewOnlyMode = false
-                            navigateToWhiteboard = true
+                            showCourtOptions = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                navigateToWhiteboard = true
+                            }
                         })
                     }
                     // Navigation link to whiteboard
@@ -228,7 +215,10 @@ struct SavedPlaysScreen: View {
                         selectedPlay = nil
                         editMode = true
                         viewOnlyMode = false
-                        navigateToWhiteboard = true
+                        showCourtOptions = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            navigateToWhiteboard = true
+                        }
                     })
                 }
                 NavigationLink(
