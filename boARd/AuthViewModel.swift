@@ -1,0 +1,106 @@
+import Foundation
+import FirebaseAuth
+import Combine
+import FirebaseFirestore
+
+class AuthViewModel: ObservableObject {
+    @Published var user: User?
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+    @Published var hasCompletedOnboarding = false
+    @Published var justSignedUp = false
+    private var handle: AuthStateDidChangeListenerHandle?
+    private let db = Firestore.firestore()
+    
+    init() {
+        handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            self?.user = user
+        }
+    }
+    
+    deinit {
+        if let handle = handle {
+            Auth.auth().removeStateDidChangeListener(handle)
+        }
+    }
+    
+    func signIn(email: String, password: String) {
+        isLoading = true
+        errorMessage = nil
+        Auth.auth().signIn(withEmail: email, password: password) { [weak self] result, error in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                if let error = error {
+                    self?.errorMessage = error.localizedDescription
+                } else if let user = result?.user {
+                    self?.user = user
+                    self?.justSignedUp = false
+                    self?.checkUserProfile(userId: user.uid) { hasProfile in
+                        self?.hasCompletedOnboarding = hasProfile
+                    }
+                }
+            }
+        }
+    }
+    
+    func signUp(email: String, password: String) {
+        isLoading = true
+        errorMessage = nil
+        Auth.auth().createUser(withEmail: email, password: password) { [weak self] result, error in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                if let error = error {
+                    self?.errorMessage = error.localizedDescription
+                } else if let user = result?.user {
+                    self?.user = user
+                    self?.justSignedUp = true
+                    self?.checkUserProfile(userId: user.uid) { hasProfile in
+                        self?.hasCompletedOnboarding = hasProfile
+                    }
+                }
+            }
+        }
+    }
+    
+    func signOut() {
+        do {
+            try Auth.auth().signOut()
+            self.user = nil
+        } catch {
+            self.errorMessage = error.localizedDescription
+        }
+    }
+    
+    func signInAnonymously() {
+        isLoading = true
+        errorMessage = nil
+        Auth.auth().signInAnonymously { [weak self] result, error in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                if let error = error {
+                    self?.errorMessage = error.localizedDescription
+                } else {
+                    self?.user = result?.user
+                    self?.justSignedUp = false
+                }
+            }
+        }
+    }
+    
+    func saveUserProfile(userId: String, profile: [String: Any], completion: @escaping (Error?) -> Void) {
+        db.collection("users").document(userId).setData(profile, merge: true) { error in
+            completion(error)
+        }
+    }
+    
+    func checkUserProfile(userId: String, completion: @escaping (Bool) -> Void) {
+        db.collection("users").document(userId).getDocument { snapshot, error in
+            if let data = snapshot?.data(),
+               let name = data["name"] as? String, !name.isEmpty {
+                completion(true)
+            } else {
+                completion(false)
+            }
+        }
+    }
+} 

@@ -88,6 +88,18 @@ struct WhiteboardView: View {
     @State private var indicatorPhase: Double = 0.0
     @State private var indicatorTimer: Timer? = nil
     
+    @State private var isDirty: Bool = false
+    
+    // Add state for Save As dialog
+    @State private var showingSaveAsAlert = false
+    
+    @Environment(\.presentationMode) var presentationMode
+    @State private var showExitAlert = false
+    @State private var showSaveErrorAlert = false
+    @State private var saveErrorMessage = ""
+    @State private var autoSaveTimer: Timer? = nil
+    @State private var showDraftRecoveryAlert = false
+    
     var body: some View {
         GeometryReader { geometry in
             if !isEditable && pathConnectionCount > 0 {
@@ -134,54 +146,91 @@ struct WhiteboardView: View {
                     courtContentView(geometry: geometry)
                         .padding(.top, 61)
                     VStack(spacing: 0) {
-                        ToolbarView(
-                            selectedTool: $selectedTool,
-                            selectedPenStyle: $selectedPenStyle,
-                            playbackState: $playbackState,
-                            isPathAssignmentMode: $isPathAssignmentMode,
-                            pathCount: pathConnectionCount,
-                            isEditable: isEditable,
-                            onAddPlayer: {
-                                isAddingPlayer = true
-                                isAddingBasketball = false
-                                isAddingOpponent = false
-                            },
-                            onAddBasketball: {
-                                isAddingBasketball = true
-                                isAddingPlayer = false
-                                isAddingOpponent = false
-                            },
-                            onAddOpponent: {
-                                isAddingOpponent = true
-                                isAddingPlayer = false
-                                isAddingBasketball = false
-                            },
-                            onUndo: {
-                                if let lastAction = actions.popLast() {
-                                    switch lastAction {
-                                    case .drawing:
-                                        if !drawings.isEmpty { drawings.removeLast() }
-                                    case .basketball:
-                                        if !basketballs.isEmpty { basketballs.removeLast() }
-                                    case .player:
-                                        if !players.isEmpty { players.removeLast() }
-                                    case .opponent:
-                                        if !opponents.isEmpty { opponents.removeLast() }
-                                    }
-                                }
-                            },
-                            onClear: { showClearConfirmation = true },
-                            onPlayAnimation: { startAnimation() },
-                            onPauseAnimation: { pauseAnimation() },
-                            onAssignPath: { togglePathAssignmentMode() },
-                            onToolChange: { tool in handleToolChange(tool) },
-                            onSave: {
-                                print("Save button tapped!")
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { showingSaveAlert = true }
+                        // Save status indicator in top right above toolbar
+                        HStack {
+                            Spacer()
+                            if isDirty {
+                                Text("Unsaved changes")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                                    .padding(6)
+                                    .background(Color.white)
+                                    .cornerRadius(8)
+                                    .padding(.trailing, 12)
+                            } else {
+                                Text("All changes saved")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                                    .padding(6)
+                                    .background(Color.white)
+                                    .cornerRadius(8)
+                                    .padding(.trailing, 12)
                             }
-                        )
-                        .padding(.vertical, 8)
-                        .background(Color(.secondarySystemBackground))
+                        }
+                        .padding(.top, 4)
+                        // Divider between nav bar and toolbar
+                        Divider()
+                            .background(Color(.systemGray3))
+                        HStack {
+                            ToolbarView(
+                                selectedTool: $selectedTool,
+                                selectedPenStyle: $selectedPenStyle,
+                                playbackState: $playbackState,
+                                isPathAssignmentMode: $isPathAssignmentMode,
+                                pathCount: pathConnectionCount,
+                                isEditable: isEditable,
+                                onAddPlayer: {
+                                    isAddingPlayer = true
+                                    isAddingBasketball = false
+                                    isAddingOpponent = false
+                                },
+                                onAddBasketball: {
+                                    isAddingBasketball = true
+                                    isAddingPlayer = false
+                                    isAddingOpponent = false
+                                },
+                                onAddOpponent: {
+                                    isAddingOpponent = true
+                                    isAddingPlayer = false
+                                    isAddingBasketball = false
+                                },
+                                onUndo: {
+                                    if let lastAction = actions.popLast() {
+                                        switch lastAction {
+                                        case .drawing:
+                                            if !drawings.isEmpty { drawings.removeLast() }
+                                        case .basketball:
+                                            if !basketballs.isEmpty { basketballs.removeLast() }
+                                        case .player:
+                                            if !players.isEmpty { players.removeLast() }
+                                        case .opponent:
+                                            if !opponents.isEmpty { opponents.removeLast() }
+                                        }
+                                    }
+                                },
+                                onClear: { showClearConfirmation = true },
+                                onPlayAnimation: { startAnimation() },
+                                onPauseAnimation: { pauseAnimation() },
+                                onAssignPath: { togglePathAssignmentMode() },
+                                onToolChange: { tool in handleToolChange(tool) },
+                                onSave: {
+                                    saveCurrentPlayImmediate()
+                                }
+                            )
+                            .padding(.vertical, 8)
+                            .background(Color.white)
+                            // Add Save As button next to Save
+                            Button(action: {
+                                print("Save As button tapped!")
+                                showingSaveAsAlert = true
+                            }) {
+                                Image(systemName: "square.and.arrow.down.on.square")
+                                    .font(.title2)
+                                    .accessibilityLabel("Save As")
+                            }
+                            .padding(.trailing, 8)
+                        }
+                        Divider().background(Color(.systemGray3))
                     }
                 }
             }
@@ -214,12 +263,27 @@ struct WhiteboardView: View {
                 saveCurrentPlay()
             }
         }
+        .sheet(isPresented: $showingSaveAsAlert) {
+            SavePlaySheet(playNameInput: $playNameInput) {
+                saveAsNewPlay()
+            }
+        }
         .onAppear {
             if let play = playToLoad {
                 loadPlayData(play)
             }
             if playbackState == .stopped {
                 startIndicatorAnimation()
+            }
+            // Start auto-save timer
+            autoSaveTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
+                if isDirty {
+                    saveDraft()
+                }
+            }
+            // Check for draft on appear
+            if let _ = loadDraft() {
+                showDraftRecoveryAlert = true
             }
         }
         .onChange(of: playbackState) { newState in
@@ -231,6 +295,55 @@ struct WhiteboardView: View {
         }
         .onDisappear {
             stopIndicatorAnimation()
+            autoSaveTimer?.invalidate()
+            autoSaveTimer = nil
+        }
+        .alert(isPresented: $showExitAlert) {
+            Alert(
+                title: Text("Unsaved Changes"),
+                message: Text("You have unsaved changes. What would you like to do?"),
+                primaryButton: .default(Text("Save"), action: {
+                    saveCurrentPlayImmediate(onSuccess: {
+                        presentationMode.wrappedValue.dismiss()
+                    })
+                }),
+                secondaryButton: .destructive(Text("Discard"), action: {
+                    presentationMode.wrappedValue.dismiss()
+                })
+            )
+        }
+        .alert(isPresented: $showSaveErrorAlert) {
+            Alert(title: Text("Save Error"), message: Text(saveErrorMessage), dismissButton: .default(Text("OK")))
+        }
+        .alert(isPresented: $showDraftRecoveryAlert) {
+            Alert(
+                title: Text("Draft Found"),
+                message: Text("A draft was found. Would you like to recover it?"),
+                primaryButton: .default(Text("Recover"), action: {
+                    if let draft = loadDraft() {
+                        restoreFromDraft(draft)
+                    }
+                }),
+                secondaryButton: .destructive(Text("Discard"), action: {
+                    deleteDraft()
+                })
+            )
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    if isDirty {
+                        showExitAlert = true
+                    } else {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "chevron.left")
+                        Text("Back")
+                    }
+                }
+            }
         }
     }
     
@@ -707,6 +820,7 @@ struct WhiteboardView: View {
              // Hide indicator if not drawing with pencil or if dragging
              showPencilIndicator = false
          }
+        isDirty = true
     }
 
     private func handleTouchEnded(touchType: TouchInputType) {
@@ -920,6 +1034,7 @@ struct WhiteboardView: View {
         players.append(newPlayer)
         // Add to actions array
         actions.append(.player(newPlayer))
+        isDirty = true
     }
     
     private func addBasketballAt(position: CGPoint) {
@@ -947,6 +1062,7 @@ struct WhiteboardView: View {
         basketballs.append(newBasketball)
         // Add to actions array
         actions.append(.basketball(newBasketball))
+        isDirty = true
     }
     
     private func getPencilWidth(for touchType: TouchInputType) -> CGFloat {
@@ -1475,6 +1591,7 @@ struct WhiteboardView: View {
         // 5. Cleanup
         playNameInput = "" // Clear the input field
         showingSaveAlert = false // Dismiss the alert implicitly by state change
+        isDirty = false
 
         // Optional: Add user feedback (e.g., a temporary banner)
     }
@@ -1578,6 +1695,7 @@ struct WhiteboardView: View {
         )
         opponents.append(newOpponent)
         actions.append(.opponent(newOpponent))
+        isDirty = true
     }
 
     // Add helper to set animation progress
@@ -1684,6 +1802,104 @@ struct WhiteboardView: View {
         } else {
             EmptyView()
         }
+    }
+
+    // Implement saveAsNewPlay function
+    private func saveAsNewPlay() {
+        // 1. Gather Data
+        let currentDrawings = self.drawings
+        let currentPlayers = self.players
+        let currentBasketballs = self.basketballs
+        let name = self.playNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let courtTypeString = self.courtType == .full ? "full" : "half"
+        guard !name.isEmpty else { return }
+        let drawingData = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
+        let playerData = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
+        let basketballData = currentBasketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
+        let newPlay = SavedPlay(
+            id: UUID(), // Always new UUID
+            name: name,
+            dateCreated: Date(),
+            lastModified: Date(),
+            courtType: courtTypeString,
+            drawings: drawingData,
+            players: playerData,
+            basketballs: basketballData
+        )
+        SavedPlayService.shared.savePlay(newPlay)
+        playNameInput = ""
+        showingSaveAsAlert = false
+        isDirty = false
+    }
+
+    // Add new function for immediate save
+    private func saveCurrentPlayImmediate(onSuccess: (() -> Void)? = nil) {
+        let currentDrawings = self.drawings
+        let currentPlayers = self.players
+        let currentBasketballs = self.basketballs
+        let name: String = playToLoad?.name ?? playNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let courtTypeString = self.courtType == .full ? "full" : "half"
+        guard !name.isEmpty else { return }
+        let drawingData = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
+        let playerData = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
+        let basketballData = currentBasketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
+        let newPlay = SavedPlay(
+            id: playToLoad?.id ?? UUID(),
+            name: name,
+            dateCreated: playToLoad?.dateCreated ?? Date(),
+            lastModified: Date(),
+            courtType: courtTypeString,
+            drawings: drawingData,
+            players: playerData,
+            basketballs: basketballData
+        )
+        SavedPlayService.shared.savePlay(newPlay)
+        isDirty = false
+        onSuccess?()
+    }
+
+    // --- Auto-Save/Drafts ---
+    private func saveDraft() {
+        let drawingData = self.drawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
+        let playerData = self.players.map { SavedPlayService.convertToPlayerData(player: $0) }
+        let basketballData = self.basketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
+        let draft = DraftPlay(
+            drawings: drawingData,
+            players: playerData,
+            basketballs: basketballData,
+            name: playToLoad?.name ?? playNameInput,
+            courtType: self.courtType == .full ? "full" : "half"
+        )
+        if let data = try? JSONEncoder().encode(draft) {
+            UserDefaults.standard.set(data, forKey: "draft_whiteboard")
+        }
+    }
+    private func loadDraft() -> DraftPlay? {
+        if let data = UserDefaults.standard.data(forKey: "draft_whiteboard"),
+           let draft = try? JSONDecoder().decode(DraftPlay.self, from: data) {
+            return draft
+        }
+        return nil
+    }
+    private func restoreFromDraft(_ draft: DraftPlay) {
+        self.drawings = draft.drawings.map { SavedPlayService.convertToDrawing(drawingData: $0) }
+        self.players = draft.players.map { SavedPlayService.convertToPlayer(playerData: $0) }
+        self.basketballs = draft.basketballs.map { SavedPlayService.convertToBasketball(basketballData: $0) }
+        self.playNameInput = draft.name
+        // courtType is fixed for this view
+        isDirty = true
+    }
+    private func deleteDraft() {
+        UserDefaults.standard.removeObject(forKey: "draft_whiteboard")
+    }
+
+    // --- Draft Model ---
+    private struct DraftPlay: Codable {
+        var drawings: [DrawingData]
+        var players: [PlayerData]
+        var basketballs: [BasketballData]
+        var name: String
+        var courtType: String // "full" or "half"
     }
 }
 

@@ -84,9 +84,8 @@ struct HomeScreen: View {
                             editMode = true
                             viewOnlyMode = false
                             showCourtOptions = false
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                navigateToWhiteboard = true
-                            }
+                            navigateToWhiteboard = true
+                            print("navigateToWhiteboard set to true")
                         })
                     }
                     // Navigation link to whiteboard
@@ -116,7 +115,7 @@ struct HomeScreen: View {
                 case .plays:
                     SavedPlaysScreen()
                 case .profile:
-                    Text("Profile View")
+                    ProfileView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
@@ -144,104 +143,99 @@ struct SavedPlaysScreen: View {
         return formatter
     }()
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color(.systemBackground)
-                    .edgesIgnoringSafeArea(.all)
-                VStack(spacing: 0) {
-                    Text("Saved Plays")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .padding(.top, 30)
-                        .padding(.bottom, 20)
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("All Plays")
-                                .font(.headline)
-                                .padding(.horizontal)
+        ZStack {
+            Color(.systemBackground)
+                .edgesIgnoringSafeArea(.all)
+            VStack(spacing: 0) {
+                Text("Saved Plays")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .padding(.top, 30)
+                    .padding(.bottom, 20)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("All Plays")
+                            .font(.headline)
+                            .padding(.horizontal)
+                        Spacer()
+                    }
+                    if savedPlays.isEmpty {
+                        VStack(spacing: 20) {
+                            Spacer()
+                            Image(systemName: "basketball")
+                                .font(.system(size: 50))
+                                .foregroundColor(.gray)
+                            Text("No saved plays yet")
+                                .font(.title3)
+                                .foregroundColor(.gray)
+                            Text("Create a new whiteboard to get started.")
+                                .foregroundColor(.gray)
                             Spacer()
                         }
-                        if savedPlays.isEmpty {
-                            VStack(spacing: 20) {
-                                Spacer()
-                                Image(systemName: "basketball")
-                                    .font(.system(size: 50))
-                                    .foregroundColor(.gray)
-                                Text("No saved plays yet")
-                                    .font(.title3)
-                                    .foregroundColor(.gray)
-                                Text("Create a new whiteboard to get started.")
-                                    .foregroundColor(.gray)
-                                Spacer()
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 50)
-                        } else {
-                            ScrollView {
-                                LazyVStack(spacing: 12) {
-                                    ForEach(savedPlays) { play in
-                                        SavedPlayRow(
-                                            play: play,
-                                            dateFormatter: dateFormatter,
-                                            onEdit: {
-                                                selectedPlay = play
-                                                editMode = true
-                                                viewOnlyMode = false
-                                                navigateToWhiteboard = true
-                                            },
-                                            onView: {
-                                                selectedPlay = play
-                                                editMode = false
-                                                viewOnlyMode = true
-                                                navigateToWhiteboard = true
-                                            },
-                                            onDelete: {
-                                                deletePlay(play)
-                                            }
-                                        )
-                                    }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 50)
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 12) {
+                                ForEach(savedPlays) { play in
+                                    SavedPlayRow(
+                                        play: play,
+                                        dateFormatter: dateFormatter,
+                                        onEdit: {
+                                            selectedPlay = play
+                                            editMode = true
+                                            viewOnlyMode = false
+                                            navigateToWhiteboard = true
+                                        },
+                                        onView: {
+                                            selectedPlay = play
+                                            editMode = false
+                                            viewOnlyMode = true
+                                            navigateToWhiteboard = true
+                                        },
+                                        onDelete: {
+                                            deletePlay(play)
+                                        }
+                                    )
                                 }
-                                .padding(.horizontal)
                             }
+                            .padding(.horizontal)
                         }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                if showCourtOptions {
-                    CourtSelectionView(isPresented: $showCourtOptions, onCourtSelected: { courtType in
-                        selectedCourtType = courtType
-                        selectedPlay = nil
-                        editMode = true
-                        viewOnlyMode = false
-                        showCourtOptions = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            navigateToWhiteboard = true
-                        }
-                    })
-                }
-                NavigationLink(
-                    destination: Group {
-                        if let play = selectedPlay {
-                            WhiteboardView(courtType: play.courtTypeEnum, playToLoad: play, isEditable: editMode)
-                        } else if let courtType = selectedCourtType {
-                            WhiteboardView(courtType: courtType)
-                        } else {
-                            EmptyView()
-                        }
-                    },
-                    isActive: $navigateToWhiteboard,
-                    label: { EmptyView() }
-                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical)
             }
-            .navigationBarHidden(true)
-            .onAppear {
-                savedPlays = SavedPlayService.shared.getAllSavedPlays()
-                    .sorted { $0.lastModified > $1.lastModified }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            if showCourtOptions {
+                CourtSelectionView(isPresented: $showCourtOptions, onCourtSelected: { courtType in
+                    selectedCourtType = courtType
+                    selectedPlay = nil
+                    editMode = true
+                    viewOnlyMode = false
+                    showCourtOptions = false
+                    navigateToWhiteboard = true
+                    print("navigateToWhiteboard set to true")
+                })
             }
+            NavigationLink(
+                destination: Group {
+                    if let play = selectedPlay {
+                        WhiteboardView(courtType: play.courtTypeEnum, playToLoad: play, isEditable: editMode)
+                    } else if let courtType = selectedCourtType {
+                        WhiteboardView(courtType: courtType)
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: $navigateToWhiteboard,
+                label: { EmptyView() }
+            )
         }
-        .navigationViewStyle(StackNavigationViewStyle())
+        .onAppear {
+            savedPlays = SavedPlayService.shared.getAllSavedPlays()
+                .sorted { $0.lastModified > $1.lastModified }
+        }
     }
     private func deletePlay(_ play: SavedPlay) {
         savedPlays.removeAll { $0.id == play.id }
@@ -407,7 +401,7 @@ struct MainTabBar: View {
                                 .fill(Color.blue)
                                 .frame(width: 60, height: 60)
                                 .shadow(radius: 6)
-                            Image(systemName: tab.iconName)
+                            Image(systemName: "plus")
                                 .font(.system(size: 32, weight: .bold))
                                 .foregroundColor(.white)
                         }

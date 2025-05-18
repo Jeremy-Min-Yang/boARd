@@ -1,0 +1,51 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcscmblueprint
+
+# SwiftPM
+/.swiftpm/
+/.build/
+
+# CocoaPods (if used)
+Pods/
+Podfile.lock
+
+# Carthage (if used)
+Carthage/
+Carthage/Build/
+
+# Firebase
+# DO NOT ignore GoogleService-Info.plist (it is safe to commit for client apps)
+# GoogleService-Info.plist
+
+# User data
+*.moved-aside
+*.xcuserdatad
+*.swp
+*.swo
+*.tmp
+
+# macOS
+.DS_Store
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# Xcode Server
+integration_logs/
+
+# SPM
+Package.resolved
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Other
+*.orig 
