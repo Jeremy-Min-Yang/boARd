@@ -18,8 +18,7 @@ Carthage/
 Carthage/Build/
 
 # Firebase
-# DO NOT ignore GoogleService-Info.plist (it is safe to commit for client apps)
-# GoogleService-Info.plist
+GoogleService-Info.plist
 
 # User data
 *.moved-aside

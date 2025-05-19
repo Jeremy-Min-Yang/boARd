@@ -102,45 +102,60 @@ struct WhiteboardView: View {
     
     var body: some View {
         GeometryReader { geometry in
-            if !isEditable && pathConnectionCount > 0 {
-                VStack(spacing: 0) {
-                    // REMOVE ToolbarView in view-only mode
-                    HStack(spacing: 12) {
-                        Button(action: {
-                            if playbackState == .playing {
-                                pauseAnimation()
-                            } else {
-                                startAnimation()
+            if !isEditable {
+                if pathConnectionCount > 0 {
+                    VStack(spacing: 0) {
+                        // Playback controls and court content
+                        HStack(spacing: 12) {
+                            Button(action: {
+                                if playbackState == .playing {
+                                    pauseAnimation()
+                                } else {
+                                    startAnimation()
+                                }
+                            }) {
+                                Image(systemName: playbackState == .playing ? "pause.fill" : "play.fill")
+                                    .font(.title2)
+                                    .foregroundColor(playbackState == .playing ? .red : .green)
+                                    .frame(width: 44, height: 44)
                             }
-                        }) {
-                            Image(systemName: playbackState == .playing ? "pause.fill" : "play.fill")
-                                .font(.title2)
-                                .foregroundColor(playbackState == .playing ? .red : .green)
-                                .frame(width: 44, height: 44)
-                        }
-                        Slider(value: Binding(
-                            get: { playbackProgress },
-                            set: { newValue in
-                                playbackProgress = newValue
-                                setAnimationProgress(newValue)
+                            Slider(value: Binding(
+                                get: { playbackProgress },
+                                set: { newValue in
+                                    playbackProgress = newValue
+                                    setAnimationProgress(newValue)
+                                }
+                            ), in: 0...1, step: 0.001)
+                            .frame(maxWidth: 200)
+                            HStack {
+                                Text("0:00")
+                                Text("/")
+                                Text(animationDurationString())
                             }
-                        ), in: 0...1, step: 0.001)
-                        .frame(maxWidth: 200)
-                        HStack {
-                            Text("0:00")
-                            Text("/")
-                            Text(animationDurationString())
+                            .font(.caption)
                         }
-                        .font(.caption)
+                        .padding(.vertical, 12)
+                        .background(Color(.secondarySystemBackground))
+                        courtContentView(geometry: geometry)
+                            .padding(.top, 8)
+                        Spacer().frame(height: 32)
                     }
-                    .padding(.vertical, 12)
-                    .background(Color(.secondarySystemBackground))
-                    courtContentView(geometry: geometry)
-                        .padding(.top, 8)
-                    Spacer().frame(height: 32)
+                    .ignoresSafeArea(edges: .bottom)
+                } else {
+                    // Show placeholder if no connected plays
+                    VStack {
+                        Spacer()
+                        Text("No connected plays available for playback.")
+                            .font(.headline)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding()
+                        courtContentView(geometry: geometry)
+                            .padding(.top, 8)
+                        Spacer()
+                    }
+                    .ignoresSafeArea(edges: .bottom)
                 }
-                .ignoresSafeArea(edges: .bottom)
-                // ...alerts, sheets, etc. (move them outside the VStack if needed)...
             } else {
                 ZStack(alignment: .top) {
                     courtContentView(geometry: geometry)
@@ -237,6 +252,7 @@ struct WhiteboardView: View {
         }
         .navigationTitle(courtType == .full ? "Full Court" : "Half Court")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .alert("Player Limit Reached", isPresented: $showPlayerLimitAlert) {
             Button("OK", role: .cancel) { }
         } message: {

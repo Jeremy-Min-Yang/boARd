@@ -30,8 +30,20 @@ class AuthViewModel: ObservableObject {
         Auth.auth().signIn(withEmail: email, password: password) { [weak self] result, error in
             DispatchQueue.main.async {
                 self?.isLoading = false
-                if let error = error {
-                    self?.errorMessage = error.localizedDescription
+                if let error = error as NSError? {
+                    switch AuthErrorCode(rawValue: error.code) {
+                    case .wrongPassword:
+                        self?.errorMessage = "Incorrect password. Please try again."
+                    case .userNotFound:
+                        self?.errorMessage = "No account found with this email."
+                    case .invalidEmail:
+                        self?.errorMessage = "Invalid email address."
+                    case .userDisabled:
+                        self?.errorMessage = "This account has been disabled."
+                    default:
+                        print("Auth error: \(error), code: \(error.code)")
+                        self?.errorMessage = "Something went wrong. Please try again later."
+                    }
                 } else if let user = result?.user {
                     self?.user = user
                     self?.justSignedUp = false
@@ -49,8 +61,18 @@ class AuthViewModel: ObservableObject {
         Auth.auth().createUser(withEmail: email, password: password) { [weak self] result, error in
             DispatchQueue.main.async {
                 self?.isLoading = false
-                if let error = error {
-                    self?.errorMessage = error.localizedDescription
+                if let error = error as NSError? {
+                    switch AuthErrorCode(rawValue: error.code) {
+                    case .emailAlreadyInUse:
+                        self?.errorMessage = "An account already exists with this email."
+                    case .invalidEmail:
+                        self?.errorMessage = "Invalid email address."
+                    case .weakPassword:
+                        self?.errorMessage = "Password is too weak."
+                    default:
+                        print("Auth error: \(error), code: \(error.code)")
+                        self?.errorMessage = "Something went wrong. Please try again later."
+                    }
                 } else if let user = result?.user {
                     self?.user = user
                     self?.justSignedUp = true

@@ -41,7 +41,6 @@ struct ProfileView: View {
         }
         .padding()
         .navigationTitle("Profile")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

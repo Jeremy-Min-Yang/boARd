@@ -76,44 +76,18 @@ struct HomeScreen: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .padding(.horizontal, 20)
-                    // Court selection overlay
-                    if showCourtOptions {
-                        CourtSelectionView(isPresented: $showCourtOptions, onCourtSelected: { courtType in
-                            selectedCourtType = courtType
-                            selectedPlay = nil
-                            editMode = true
-                            viewOnlyMode = false
-                            showCourtOptions = false
-                            navigateToWhiteboard = true
-                            print("navigateToWhiteboard set to true")
-                        })
-                    }
-                    // Navigation link to whiteboard
-                    NavigationLink(
-                        destination: Group {
-                            if let play = selectedPlay {
-                                WhiteboardView(courtType: play.courtTypeEnum, playToLoad: play, isEditable: editMode)
-                            } else if let courtType = selectedCourtType {
-                                WhiteboardView(courtType: courtType)
-                            } else {
-                                EmptyView()
-                            }
-                        },
-                        isActive: $navigateToWhiteboard,
-                        label: { EmptyView() }
-                    )
-                    .hidden()
-                    .onAppear {
-                        savedPlays = SavedPlayService.shared.getAllSavedPlays()
-                            .sorted { $0.lastModified > $1.lastModified }
-                    }
                 case .team:
                     Text("Team View")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .add:
                     EmptyView()
                 case .plays:
-                    SavedPlaysScreen()
+                    SavedPlaysScreen(
+                        selectedPlay: $selectedPlay,
+                        editMode: $editMode,
+                        viewOnlyMode: $viewOnlyMode,
+                        navigateToWhiteboard: $navigateToWhiteboard
+                    )
                 case .profile:
                     ProfileView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -123,18 +97,42 @@ struct HomeScreen: View {
             MainTabBar(selectedTab: $selectedTab) {
                 showCourtOptions = true
             }
+            // --- Global overlays for court selection and navigation ---
+            if showCourtOptions {
+                CourtSelectionView(isPresented: $showCourtOptions, onCourtSelected: { courtType in
+                    selectedCourtType = courtType
+                    selectedPlay = nil
+                    editMode = true
+                    viewOnlyMode = false
+                    showCourtOptions = false
+                    navigateToWhiteboard = true
+                    print("navigateToWhiteboard set to true")
+                })
+            }
+            NavigationLink(
+                destination: Group {
+                    if let play = selectedPlay {
+                        WhiteboardView(courtType: play.courtTypeEnum, playToLoad: play, isEditable: editMode)
+                    } else if let courtType = selectedCourtType {
+                        WhiteboardView(courtType: courtType)
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: $navigateToWhiteboard,
+                label: { EmptyView() }
+            )
+            .hidden()
         }
         .edgesIgnoringSafeArea(.bottom)
     }
 }
 
 struct SavedPlaysScreen: View {
-    @State private var showCourtOptions = false
-    @State private var selectedCourtType: CourtType?
-    @State private var navigateToWhiteboard = false
-    @State private var selectedPlay: SavedPlay?
-    @State private var editMode = false
-    @State private var viewOnlyMode = false
+    @Binding var selectedPlay: SavedPlay?
+    @Binding var editMode: Bool
+    @Binding var viewOnlyMode: Bool
+    @Binding var navigateToWhiteboard: Bool
     @State private var savedPlays: [SavedPlay] = []
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -207,30 +205,6 @@ struct SavedPlaysScreen: View {
                 .padding(.vertical)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            if showCourtOptions {
-                CourtSelectionView(isPresented: $showCourtOptions, onCourtSelected: { courtType in
-                    selectedCourtType = courtType
-                    selectedPlay = nil
-                    editMode = true
-                    viewOnlyMode = false
-                    showCourtOptions = false
-                    navigateToWhiteboard = true
-                    print("navigateToWhiteboard set to true")
-                })
-            }
-            NavigationLink(
-                destination: Group {
-                    if let play = selectedPlay {
-                        WhiteboardView(courtType: play.courtTypeEnum, playToLoad: play, isEditable: editMode)
-                    } else if let courtType = selectedCourtType {
-                        WhiteboardView(courtType: courtType)
-                    } else {
-                        EmptyView()
-                    }
-                },
-                isActive: $navigateToWhiteboard,
-                label: { EmptyView() }
-            )
         }
         .onAppear {
             savedPlays = SavedPlayService.shared.getAllSavedPlays()
