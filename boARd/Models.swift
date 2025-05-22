@@ -121,6 +121,7 @@ struct BasketballItem {
     var position: CGPoint
     var normalizedPosition: CGPoint?
     var assignedPathId: UUID?
+    var assignedPlayerId: UUID?
 }
 
 struct OpponentCircle {

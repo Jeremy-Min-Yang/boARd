@@ -10,6 +10,10 @@ struct PlayersView: View {
     @Binding var selectedDrawingId: UUID?
     @Binding var drawings: [Drawing]
     var onAssignPath: (UUID, Int) -> Void
+    // For assign ball mode
+    var isAssigningBall: Bool = false
+    @Binding var selectedBasketballIndex: Int?
+    var onAssignBall: ((Int) -> Void)? = nil
     private func getPlayerColor(_ player: PlayerCircle) -> Color { .green }
     var body: some View {
         GeometryReader { geometry in
@@ -36,6 +40,8 @@ struct PlayersView: View {
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 onAssignPath(drawingId, index)
                             }
+                        } else if isAssigningBall, let assignBall = onAssignBall {
+                            assignBall(index)
                         }
                     }
                     .simultaneousGesture(

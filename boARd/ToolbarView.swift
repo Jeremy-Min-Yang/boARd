@@ -15,6 +15,8 @@ struct ToolbarView: View {
     let onPlayAnimation: () -> Void
     let onPauseAnimation: () -> Void
     let onAssignPath: () -> Void
+    let onAssignBall: () -> Void
+    let isAssigningBall: Bool
     let onToolChange: (DrawingTool) -> Void
     let onSave: () -> Void
     var body: some View {
@@ -43,7 +45,17 @@ struct ToolbarView: View {
                     .foregroundColor(isPathAssignmentMode ? .white : .primary)
                     .cornerRadius(8)
                 }
-                .padding(.trailing, 8)
+                Button(action: onAssignBall) {
+                    Image(systemName: "basketball.fill")
+                        .font(.title2)
+                        .foregroundColor(isAssigningBall ? .white : .primary)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(isAssigningBall ? Color.blue.opacity(0.7) : Color.gray.opacity(0.2))
+                        )
+                }
+                .padding(.leading, 0)
                 playbackControls
                 Spacer()
                 Button(action: onUndo) {

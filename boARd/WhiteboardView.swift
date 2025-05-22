@@ -100,6 +100,19 @@ struct WhiteboardView: View {
     @State private var autoSaveTimer: Timer? = nil
     @State private var showDraftRecoveryAlert = false
     
+    // --- Auto-Save/Drafts ---
+    private var draftKey: String {
+        if let play = playToLoad {
+            return "draft_whiteboard_\(play.id)"
+        } else {
+            return "draft_whiteboard_new"
+        }
+    }
+
+    // Add state for assign ball mode
+    @State private var isAssigningBall = false
+    @State private var selectedBasketballIndex: Int? = nil
+
     var body: some View {
         GeometryReader { geometry in
             if !isEditable {
@@ -227,6 +240,23 @@ struct WhiteboardView: View {
                                 onPlayAnimation: { startAnimation() },
                                 onPauseAnimation: { pauseAnimation() },
                                 onAssignPath: { togglePathAssignmentMode() },
+                                onAssignBall: {
+                                    if !isAssigningBall {
+                                        if isPathAssignmentMode {
+                                            isPathAssignmentMode = false
+                                        }
+                                        previousTool = selectedTool
+                                        selectedTool = .move
+                                        isAssigningBall = true
+                                    } else {
+                                        isAssigningBall = false
+                                        if let prevTool = previousTool {
+                                            selectedTool = prevTool
+                                        }
+                                    }
+                                    selectedBasketballIndex = nil
+                                },
+                                isAssigningBall: isAssigningBall,
                                 onToolChange: { tool in handleToolChange(tool) },
                                 onSave: {
                                     saveCurrentPlayImmediate()
@@ -246,6 +276,13 @@ struct WhiteboardView: View {
                             .padding(.trailing, 8)
                         }
                         Divider().background(Color(.systemGray3))
+                        // Show instructions when assigning ball
+                        if isAssigningBall {
+                            Text("Choose a player to connect the basketball to")
+                                .font(.footnote)
+                                .foregroundColor(.gray)
+                                .padding(.top, 4)
+                        }
                     }
                 }
             }
@@ -339,9 +376,11 @@ struct WhiteboardView: View {
                     if let draft = loadDraft() {
                         restoreFromDraft(draft)
                     }
+                    showDraftRecoveryAlert = false
                 }),
                 secondaryButton: .destructive(Text("Discard"), action: {
                     deleteDraft()
+                    showDraftRecoveryAlert = false
                 })
             )
         }
@@ -458,15 +497,27 @@ struct WhiteboardView: View {
                     isPathAssignmentMode: $isPathAssignmentMode,
                     selectedDrawingId: $selectedDrawingId,
                     drawings: $drawings,
-                    onAssignPath: assignPathToPlayer
+                    onAssignPath: assignPathToPlayer,
+                    isAssigningBall: isAssigningBall,
+                    selectedBasketballIndex: $selectedBasketballIndex,
+                    onAssignBall: { playerIndex in
+                        if let ballIdx = selectedBasketballIndex {
+                            assignBasketballToPlayer(basketballIndex: ballIdx, playerIndex: playerIndex)
+                            isAssigningBall = false
+                            selectedBasketballIndex = nil
+                        }
+                    }
                 )
                 .zIndex(20)
                 BasketballsView(
                     courtType: courtType,
                     basketballs: $basketballs,
+                    players: $players,
                     draggedBasketballIndex: $draggedBasketballIndex,
                     currentTouchType: $currentTouchType,
-                    selectedTool: $selectedTool
+                    selectedTool: $selectedTool,
+                    isAssigningBall: isAssigningBall,
+                    selectedBasketballIndex: $selectedBasketballIndex
                 )
                 .zIndex(selectedTool == .move || playbackState == .playing ? 10 : 2)
                 OpponentsView(
@@ -1096,11 +1147,14 @@ struct WhiteboardView: View {
     // Add these functions for animation control
     private func togglePathAssignmentMode() {
         // Toggle the path assignment mode
-        isPathAssignmentMode.toggle()
+        let willBeActive = !isPathAssignmentMode
+        isPathAssignmentMode = willBeActive
         
-        // When entering path assignment mode
-        if isPathAssignmentMode {
-            // Store the previous tool to restore later
+        // If activating path assignment, turn off assign ball mode
+        if willBeActive {
+            if isAssigningBall {
+                isAssigningBall = false
+            }
             previousTool = selectedTool
             selectedTool = .move
             
@@ -1174,6 +1228,12 @@ struct WhiteboardView: View {
         print("Setting drawing \(drawingId) associated player index to \(playerIndex)")
         drawings[drawingIndex].associatedPlayerIndex = playerIndex
         
+        // Move player to the start of the assigned path
+        if let startPoint = drawings[drawingIndex].points.first {
+            players[playerIndex].position = startPoint
+            updateNormalizedPosition(forPlayer: playerIndex, location: startPoint)
+        }
+        
         // Keep the selected drawing ID for further assignments
         selectedDrawingId = drawingId
         
@@ -1215,6 +1275,14 @@ struct WhiteboardView: View {
                 if let finalPosition = getPointOnPath(points: animData.pathPoints, progress: 1.0) {
                     players[playerIndex].position = finalPosition
                 }
+            }
+        }
+        // Move assigned basketballs with their players
+        for i in basketballs.indices {
+            if let assignedId = basketballs[i].assignedPlayerId,
+               let player = players.first(where: { $0.id == assignedId }) {
+                basketballs[i].position = player.position
+                updateNormalizedPosition(forBasketball: i, location: player.position)
             }
         }
         playbackProgress = maxProgress
@@ -1608,6 +1676,7 @@ struct WhiteboardView: View {
         playNameInput = "" // Clear the input field
         showingSaveAlert = false // Dismiss the alert implicitly by state change
         isDirty = false
+        deleteDraft()
 
         // Optional: Add user feedback (e.g., a temporary banner)
     }
@@ -1871,11 +1940,13 @@ struct WhiteboardView: View {
         )
         SavedPlayService.shared.savePlay(newPlay)
         isDirty = false
+        deleteDraft()
         onSuccess?()
     }
 
     // --- Auto-Save/Drafts ---
     private func saveDraft() {
+        guard isDirty else { return } // Only save if there are unsaved changes
         let drawingData = self.drawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
         let playerData = self.players.map { SavedPlayService.convertToPlayerData(player: $0) }
         let basketballData = self.basketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
@@ -1887,26 +1958,23 @@ struct WhiteboardView: View {
             courtType: self.courtType == .full ? "full" : "half"
         )
         if let data = try? JSONEncoder().encode(draft) {
-            UserDefaults.standard.set(data, forKey: "draft_whiteboard")
+            UserDefaults.standard.set(data, forKey: draftKey)
         }
     }
     private func loadDraft() -> DraftPlay? {
-        if let data = UserDefaults.standard.data(forKey: "draft_whiteboard"),
+        if let data = UserDefaults.standard.data(forKey: draftKey),
            let draft = try? JSONDecoder().decode(DraftPlay.self, from: data) {
-            return draft
+            // Only return the draft if it matches the current play (by name and courtType)
+            let currentName = playToLoad?.name ?? playNameInput
+            let currentCourtType = self.courtType == .full ? "full" : "half"
+            if draft.name == currentName && draft.courtType == currentCourtType {
+                return draft
+            }
         }
         return nil
     }
-    private func restoreFromDraft(_ draft: DraftPlay) {
-        self.drawings = draft.drawings.map { SavedPlayService.convertToDrawing(drawingData: $0) }
-        self.players = draft.players.map { SavedPlayService.convertToPlayer(playerData: $0) }
-        self.basketballs = draft.basketballs.map { SavedPlayService.convertToBasketball(basketballData: $0) }
-        self.playNameInput = draft.name
-        // courtType is fixed for this view
-        isDirty = true
-    }
     private func deleteDraft() {
-        UserDefaults.standard.removeObject(forKey: "draft_whiteboard")
+        UserDefaults.standard.removeObject(forKey: draftKey)
     }
 
     // --- Draft Model ---
@@ -1916,6 +1984,25 @@ struct WhiteboardView: View {
         var basketballs: [BasketballData]
         var name: String
         var courtType: String // "full" or "half"
+    }
+
+    private func restoreFromDraft(_ draft: DraftPlay) {
+        self.drawings = draft.drawings.map { SavedPlayService.convertToDrawing(drawingData: $0) }
+        self.players = draft.players.map { SavedPlayService.convertToPlayer(playerData: $0) }
+        self.basketballs = draft.basketballs.map { SavedPlayService.convertToBasketball(basketballData: $0) }
+        self.playNameInput = draft.name
+        // courtType is fixed for this view
+        isDirty = true
+    }
+
+    // Assign a basketball to a player
+    private func assignBasketballToPlayer(basketballIndex: Int, playerIndex: Int) {
+        guard basketballIndex >= 0, basketballIndex < basketballs.count,
+              playerIndex >= 0, playerIndex < players.count else { return }
+        basketballs[basketballIndex].assignedPlayerId = players[playerIndex].id
+        // Move the basketball to the player's position immediately
+        basketballs[basketballIndex].position = players[playerIndex].position
+        updateNormalizedPosition(forBasketball: basketballIndex, location: players[playerIndex].position)
     }
 }
 
