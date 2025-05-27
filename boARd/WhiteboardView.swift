@@ -6,11 +6,11 @@ import UIKit
 // Now modify the main WhiteboardView to use these components
 struct WhiteboardView: View {
     let courtType: CourtType
-    var playToLoad: SavedPlay? = nil
+    var playToLoad: Models.SavedPlay? = nil
     var isEditable: Bool = true // Default to true (for new plays)
     
     // Add this init method
-    init(courtType: CourtType, playToLoad: SavedPlay? = nil, isEditable: Bool = true) {
+    init(courtType: CourtType, playToLoad: Models.SavedPlay? = nil, isEditable: Bool = true) {
         self.courtType = courtType
         self.playToLoad = playToLoad
         self.isEditable = isEditable
@@ -1602,7 +1602,7 @@ struct WhiteboardView: View {
         print("Tool change complete. Current tool: \\(selectedTool), isAddingPlayer: \\(isAddingPlayer), isAddingBasketball: \\(isAddingBasketball)")
     }
 
-    private func loadPlayData(_ play: SavedPlay) {
+    private func loadPlayData(_ play: Models.SavedPlay) {
         // Convert and update state variables
         self.drawings = play.drawings.map { SavedPlayService.convertToDrawing(drawingData: $0) }
         self.players = play.players.map { SavedPlayService.convertToPlayer(playerData: $0) }
@@ -1654,7 +1654,7 @@ struct WhiteboardView: View {
 
         // 3. Create SavedPlay Object
         // Use the existing play's ID and dateCreated if editing, otherwise generate new
-        let newPlay = SavedPlay(
+        let newPlay = Models.SavedPlay(
             id: playToLoad?.id ?? UUID(),
             name: name,
             dateCreated: playToLoad?.dateCreated ?? Date(),
@@ -1901,7 +1901,7 @@ struct WhiteboardView: View {
         let drawingData = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
         let playerData = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
         let basketballData = currentBasketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
-        let newPlay = SavedPlay(
+        let newPlay = Models.SavedPlay(
             id: UUID(), // Always new UUID
             name: name,
             dateCreated: Date(),
@@ -1928,7 +1928,7 @@ struct WhiteboardView: View {
         let drawingData = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
         let playerData = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
         let basketballData = currentBasketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
-        let newPlay = SavedPlay(
+        let newPlay = Models.SavedPlay(
             id: playToLoad?.id ?? UUID(),
             name: name,
             dateCreated: playToLoad?.dateCreated ?? Date(),
@@ -1979,9 +1979,9 @@ struct WhiteboardView: View {
 
     // --- Draft Model ---
     private struct DraftPlay: Codable {
-        var drawings: [DrawingData]
-        var players: [PlayerData]
-        var basketballs: [BasketballData]
+        var drawings: [Models.DrawingData]
+        var players: [Models.PlayerData]
+        var basketballs: [Models.BasketballData]
         var name: String
         var courtType: String // "full" or "half"
     }
@@ -2003,6 +2003,10 @@ struct WhiteboardView: View {
         // Move the basketball to the player's position immediately
         basketballs[basketballIndex].position = players[playerIndex].position
         updateNormalizedPosition(forBasketball: basketballIndex, location: players[playerIndex].position)
+    }
+
+    func loadPlay(play: Models.SavedPlay) {
+        // ... existing code ...
     }
 }
 

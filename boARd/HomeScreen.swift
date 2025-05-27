@@ -1,14 +1,18 @@
 import SwiftUI
+import FirebaseAuth
 
 struct HomeScreen: View {
     @State private var selectedTab: MainTab = .home
     @State private var showCourtOptions = false
     @State private var selectedCourtType: CourtType?
     @State private var navigateToWhiteboard = false
-    @State private var savedPlays: [SavedPlay] = []
-    @State private var selectedPlay: SavedPlay?
+    @State private var savedPlays: [Models.SavedPlay] = []
+    @State private var selectedPlay: Models.SavedPlay?
     @State private var editMode = false
     @State private var viewOnlyMode = false
+    @State private var uploadingPlayID: UUID? = nil
+    @State private var uploadSuccessPlayID: UUID? = nil
+    @State private var showLoginAlert: Bool = false
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -125,15 +129,27 @@ struct HomeScreen: View {
             .hidden()
         }
         .edgesIgnoringSafeArea(.bottom)
+        .alert(isPresented: $showLoginAlert) {
+            Alert(
+                title: Text("Login Required"),
+                message: Text("You must be logged in to upload plays to the cloud."),
+                dismissButton: .default(Text("OK"))
+            )
+        }
     }
 }
 
 struct SavedPlaysScreen: View {
-    @Binding var selectedPlay: SavedPlay?
+    @Binding var selectedPlay: Models.SavedPlay?
     @Binding var editMode: Bool
     @Binding var viewOnlyMode: Bool
     @Binding var navigateToWhiteboard: Bool
-    @State private var savedPlays: [SavedPlay] = []
+    @State private var savedPlays: [Models.SavedPlay] = []
+    @State private var syncStatus: String = ""
+    @State private var isSyncing: Bool = false
+    @State private var uploadingPlayID: UUID? = nil
+    @State private var uploadSuccessPlayID: UUID? = nil
+    @State private var showLoginAlert: Bool = false
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -157,6 +173,55 @@ struct SavedPlaysScreen: View {
                             .padding(.horizontal)
                         Spacer()
                     }
+                    // --- Cloud Sync Section ---
+                    VStack(alignment: .center, spacing: 8) {
+                        Text("Cloud Sync")
+                            .font(.headline)
+                            .padding(.top, 4)
+                        HStack(spacing: 16) {
+                            Spacer()
+                            Button(action: {
+                                isSyncing = true
+                                syncStatus = "Syncing..."
+                                SavedPlayService.shared.downloadAllCloudPlaysToLocal { error in
+                                    DispatchQueue.main.async {
+                                        isSyncing = false
+                                        if let error = error {
+                                            syncStatus = "Download failed: \(error.localizedDescription)"
+                                        } else {
+                                            syncStatus = "Downloaded from cloud!"
+                                            savedPlays = SavedPlayService.shared.loadPlaysLocally().sorted { $0.lastModified > $1.lastModified }
+                                        }
+                                    }
+                                }
+                            }) {
+                                Label("Sync from Cloud", systemImage: "icloud.and.arrow.down")
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.green.opacity(0.12))
+                                    .foregroundColor(.green)
+                                    .cornerRadius(10)
+                            }
+                            .disabled(isSyncing)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 4)
+                        if !syncStatus.isEmpty {
+                            Text(syncStatus)
+                                .font(.caption)
+                                .foregroundColor(syncStatus.contains("failed") ? .red : .green)
+                                .padding(.top, 2)
+                        }
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.gray.opacity(0.25), lineWidth: 1.5)
+                            .background(Color(.systemBackground).opacity(0.8).cornerRadius(16))
+                    )
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
                     if savedPlays.isEmpty {
                         VStack(spacing: 20) {
                             Spacer()
@@ -193,7 +258,32 @@ struct SavedPlaysScreen: View {
                                         },
                                         onDelete: {
                                             deletePlay(play)
-                                        }
+                                        },
+                                        onUpload: {
+                                            if Auth.auth().currentUser == nil {
+                                                uploadingPlayID = nil
+                                                uploadSuccessPlayID = nil
+                                                print("DEBUG: Tried to upload as guest. Auth.currentUser is nil.")
+                                                showLoginAlert = true
+                                                return
+                                            }
+                                            uploadingPlayID = play.id
+                                            uploadSuccessPlayID = nil
+                                            SavedPlayService.shared.savePlay(play, forUserID: Auth.auth().currentUser?.uid ?? "") { error in
+                                                DispatchQueue.main.async {
+                                                    uploadingPlayID = nil
+                                                    if error == nil {
+                                                        uploadSuccessPlayID = play.id
+                                                        // Hide checkmark after 1.5s
+                                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                                            uploadSuccessPlayID = nil
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        isUploading: uploadingPlayID == play.id,
+                                        uploadSuccess: uploadSuccessPlayID == play.id
                                     )
                                 }
                             }
@@ -207,25 +297,26 @@ struct SavedPlaysScreen: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .onAppear {
-            savedPlays = SavedPlayService.shared.getAllSavedPlays()
+            savedPlays = SavedPlayService.shared.loadPlaysLocally()
                 .sorted { $0.lastModified > $1.lastModified }
         }
     }
-    private func deletePlay(_ play: SavedPlay) {
+    private func deletePlay(_ play: Models.SavedPlay) {
         savedPlays.removeAll { $0.id == play.id }
-        SavedPlayService.shared.deletePlay(id: play.id)
+        SavedPlayService.shared.deletePlay(playID: play.id.uuidString) { _ in }
     }
 }
 
 struct SavedPlayRow: View {
-    let play: SavedPlay
+    let play: Models.SavedPlay
     let dateFormatter: DateFormatter
     let onEdit: () -> Void
     let onView: () -> Void
     let onDelete: () -> Void
-    
+    let onUpload: () -> Void
+    let isUploading: Bool
+    let uploadSuccess: Bool
     @State private var showDeleteConfirmation = false
-    
     var body: some View {
         VStack(alignment: .leading) {
             HStack {
@@ -233,41 +324,48 @@ struct SavedPlayRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(play.name)
                         .font(.headline)
-                    
                     Text("\(play.courtType.capitalized) Court")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-                    
                     Text("Last modified: \(dateFormatter.string(from: play.lastModified))")
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
-                
                 Spacer()
-                
                 // Action buttons
                 HStack(spacing: 12) {
                     Button(action: onEdit) {
                         Image(systemName: "pencil")
                             .foregroundColor(.blue)
                     }
-                    
                     Button(action: onView) {
                         Image(systemName: "eye")
                             .foregroundColor(.green)
                     }
-                    
                     Button(action: {
                         showDeleteConfirmation = true
                     }) {
                         Image(systemName: "trash")
                             .foregroundColor(.red)
                     }
+                    Button(action: onUpload) {
+                        if isUploading {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle())
+                        } else if uploadSuccess {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                        } else {
+                            Image(systemName: "icloud.and.arrow.up")
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    .disabled(isUploading)
+                    .accessibilityLabel("Upload to Cloud")
                 }
                 .padding(.trailing, 8)
             }
             .padding(.vertical, 8)
-            
             Divider()
         }
         .padding(.horizontal, 8)

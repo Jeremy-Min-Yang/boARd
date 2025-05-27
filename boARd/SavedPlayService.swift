@@ -5,78 +5,11 @@ import FirebaseAuth
 // We need to access types from Models.swift
 // No import needed as they're in the same module
 
-// Type aliases for backward compatibility with existing code
-public typealias SavedPlay = Models.SavedPlay
-public typealias DrawingData = Models.DrawingData
-public typealias PlayerData = Models.PlayerData
-public typealias BasketballData = Models.BasketballData
-public typealias PointData = Models.PointData
-
-// Moving all model definitions to an extension of Models to avoid name conflicts
-extension Models {
-    // Model that represents a saved play
-    public struct SavedPlay: Codable, Identifiable {
-        public var firestoreID: String?
-        public var id = UUID()
-        public var userID: String? 
-        public var name: String
-        public var dateCreated: Date
-        public var lastModified: Date
-        public var courtType: String 
-        
-        public var drawings: [DrawingData]
-        public var players: [PlayerData]
-        public var basketballs: [BasketballData]
-        
-        public var courtTypeEnum: CourtType {
-            return courtType == "full" ? .full : .half
-        }
-    }
-
-    public struct DrawingData: Codable, Identifiable {
-        public var id: UUID
-        public var color: String 
-        public var lineWidth: CGFloat
-        public var type: String 
-        public var style: String 
-        public var points: [PointData] 
-        public var normalizedPoints: [PointData]?
-        public var associatedPlayerIndex: Int?
-        public var isHighlightedDuringAnimation: Bool
-    }
-
-    public struct PlayerData: Codable, Identifiable {
-        public var id: UUID
-        public var position: PointData
-        public var number: Int
-        public var normalizedPosition: PointData?
-        public var assignedPathId: UUID?
-    }
-
-    public struct BasketballData: Codable, Identifiable { 
-        public var id = UUID() 
-        public var position: PointData
-        public var normalizedPosition: PointData?
-        public var assignedPathId: UUID?
-    }
-
-    public struct PointData: Codable {
-        public var x: CGFloat
-        public var y: CGFloat
-        
-        public var cgPoint: CGPoint {
-            return CGPoint(x: x, y: y)
-        }
-        
-        public static func from(cgPoint: CGPoint) -> PointData {
-            return PointData(x: cgPoint.x, y: cgPoint.y)
-        }
-    }
-}
-
 public class SavedPlayService {
     static let shared = SavedPlayService()
-    private let db = Firestore.firestore()
+    private var db: Firestore {
+        Firestore.firestore()
+    }
     private var playsCollection: CollectionReference { 
         return db.collection("plays")
     }
@@ -412,7 +345,7 @@ public class SavedPlayService {
     // MARK: - Convenience methods for backward compatibility
     
     // These methods help existing code work without changes
-    func savePlay(_ play: SavedPlay) {
+    func savePlay(_ play: Models.SavedPlay) {
         // For backward compatibility - calls the new method with the current user's ID
         guard let userID = Auth.auth().currentUser?.uid else {
             print("Error: Cannot save play without a signed-in user")
@@ -421,6 +354,71 @@ public class SavedPlayService {
         savePlay(play, forUserID: userID) { error in
             if let error = error {
                 print("Error saving play: \(error)")
+            } else {
+                // Update local storage after successful save
+                var localPlays = self.loadPlaysLocally()
+                if let idx = localPlays.firstIndex(where: { $0.id == play.id }) {
+                    localPlays[idx] = play
+                } else {
+                    localPlays.append(play)
+                }
+                self.savePlaysLocally(localPlays)
+            }
+        }
+    }
+    
+    // MARK: - Local Storage (Offline Mode)
+    func savePlaysLocally(_ plays: [Models.SavedPlay]) {
+        let encoder = JSONEncoder()
+        if let encoded = try? encoder.encode(plays) {
+            UserDefaults.standard.set(encoded, forKey: "savedPlays")
+        }
+    }
+
+    func loadPlaysLocally() -> [Models.SavedPlay] {
+        if let savedData = UserDefaults.standard.data(forKey: "savedPlays") {
+            let decoder = JSONDecoder()
+            if let loadedPlays = try? decoder.decode([Models.SavedPlay].self, from: savedData) {
+                return loadedPlays
+            }
+        }
+        return []
+    }
+
+    func uploadAllLocalPlaysToCloud(completion: ((Error?) -> Void)? = nil) {
+        let localPlays = loadPlaysLocally()
+        guard let userID = Auth.auth().currentUser?.uid else {
+            completion?(NSError(domain: "NoUser", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not signed in"]))
+            return
+        }
+        let group = DispatchGroup()
+        var lastError: Error?
+        for play in localPlays {
+            group.enter()
+            savePlay(play, forUserID: userID) { error in
+                if let error = error {
+                    lastError = error
+                }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            completion?(lastError)
+        }
+    }
+
+    func downloadAllCloudPlaysToLocal(completion: ((Error?) -> Void)? = nil) {
+        guard let userID = Auth.auth().currentUser?.uid else {
+            completion?(NSError(domain: "NoUser", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not signed in"]))
+            return
+        }
+        fetchPlays(forUserID: userID) { result in
+            switch result {
+            case .success(let plays):
+                self.savePlaysLocally(plays)
+                completion?(nil)
+            case .failure(let error):
+                completion?(error)
             }
         }
     }

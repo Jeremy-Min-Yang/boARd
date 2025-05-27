@@ -3,11 +3,22 @@ import SwiftUI
 struct OnboardingView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var name = ""
-    @State private var position = ""
-    @State private var sport = ""
     @State private var teamID = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var selectedSport = "Basketball"
+    @State private var selectedPosition = "Point Guard"
+    
+    private let sports = ["Basketball", "Football", "Soccer"]
+    private let positionsBySport: [String: [String]] = [
+        "Basketball": ["Point Guard", "Shooting Guard", "Small Forward", "Power Forward", "Center", "Coach"],
+        "Football": ["Quarterback", "Running Back", "Wide Receiver", "Tight End", "Defensive Tackle","Defensive End", "Guard", "Linebacker", "Cornerback", "Safety", "Kicker", "Punter", "Coach"],
+        "Soccer": ["Goalkeeper", "Defender", "Midfielder", "Forward", "Striker", "Winger", "Coach"]
+    ]
+    
+    var currentPositions: [String] {
+        positionsBySport[selectedSport] ?? ["Coach"]
+    }
     
     var body: some View {
         VStack(spacing: 20) {
@@ -15,18 +26,30 @@ struct OnboardingView: View {
                 .font(.largeTitle)
                 .fontWeight(.bold)
                 .padding(.top, 40)
-            TextField("Name", text: $name)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding(.horizontal)
-            TextField("Position", text: $position)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding(.horizontal)
-            TextField("Sport", text: $sport)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding(.horizontal)
-            TextField("Team ID", text: $teamID)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding(.horizontal)
+            VStack(spacing: 16) {
+                TextField("Name", text: $name)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .frame(width: 250)
+                    .multilineTextAlignment(.center)
+                Picker("Sport", selection: $selectedSport) {
+                    ForEach(sports, id: \.self) { sport in
+                        Text(sport)
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .frame(width: 250)
+                Picker("Position", selection: $selectedPosition) {
+                    ForEach(currentPositions, id: \.self) { position in
+                        Text(position)
+                    }
+                }
+                .pickerStyle(MenuPickerStyle())
+                .frame(width: 250)
+                TextField("Team ID (Optional)", text: $teamID)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .frame(width: 250)
+                    .multilineTextAlignment(.center)
+            }
             if let error = errorMessage {
                 Text(error)
                     .foregroundColor(.red)
@@ -46,7 +69,7 @@ struct OnboardingView: View {
                         .padding(.horizontal)
                 }
             }
-            .disabled(name.isEmpty || position.isEmpty || sport.isEmpty || teamID.isEmpty)
+            .disabled(name.isEmpty || teamID.isEmpty)
             Spacer()
         }
         .padding()
@@ -58,8 +81,8 @@ struct OnboardingView: View {
         errorMessage = nil
         let profile: [String: Any] = [
             "name": name,
-            "position": position,
-            "sport": sport,
+            "position": selectedPosition,
+            "sport": selectedSport,
             "teamID": teamID,
             "email": user.email ?? "",
             "uid": user.uid
@@ -72,6 +95,9 @@ struct OnboardingView: View {
                 } else {
                     authViewModel.hasCompletedOnboarding = true
                     authViewModel.justSignedUp = false
+                    if let user = authViewModel.user {
+                        authViewModel.setOnboardingCompleted(for: user.uid)
+                    }
                 }
             }
         }

@@ -28,7 +28,8 @@
 		09ACAB772DD8B919006310D7 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACAB742DD8B918006310D7 /* AuthView.swift */; };
 		09ACAB792DD8BC2C006310D7 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACAB782DD8BC2C006310D7 /* ProfileView.swift */; };
 		09ACAB7B2DD8BE85006310D7 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACAB7A2DD8BE85006310D7 /* OnboardingView.swift */; };
-		09CCAB642DAC1B06001FC93E /* SavedPlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09CCAB632DAC1B06001FC93E /* SavedPlay.swift */; };
+		09E06C052DE1D29B00D11095 /* SavedPlayService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09E06C042DE1D29B00D11095 /* SavedPlayService.swift */; };
+		09E06C082DE2F8E300D11095 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09E06C072DE2F8E300D11095 /* AppDelegate.swift */; };
 		58A4C39128F0E72C00E16278 /* boARdApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4C39028F0E72C00E16278 /* boARdApp.swift */; };
 		58A4C39328F0E72C00E16278 /* HomeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4C39228F0E72C00E16278 /* HomeScreen.swift */; };
 		58A4C39528F0E72E00E16278 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 58A4C39428F0E72E00E16278 /* Assets.xcassets */; };
@@ -53,7 +54,8 @@
 		09ACAB752DD8B918006310D7 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		09ACAB782DD8BC2C006310D7 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		09ACAB7A2DD8BE85006310D7 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
-		09CCAB632DAC1B06001FC93E /* SavedPlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedPlay.swift; sourceTree = "<group>"; };
+		09E06C042DE1D29B00D11095 /* SavedPlayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedPlayService.swift; sourceTree = "<group>"; };
+		09E06C072DE2F8E300D11095 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		58A4C38D28F0E72C00E16278 /* boARd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = boARd.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		58A4C39028F0E72C00E16278 /* boARdApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = boARdApp.swift; sourceTree = "<group>"; };
 		58A4C39228F0E72C00E16278 /* HomeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeScreen.swift; sourceTree = "<group>"; };
@@ -92,6 +94,7 @@
 			children = (
 				58A4C38F28F0E72C00E16278 /* boARd */,
 				58A4C38E28F0E72C00E16278 /* Products */,
+				09E06C072DE2F8E300D11095 /* AppDelegate.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -120,11 +123,11 @@
 				0917D4F02DD1FEF700F49352 /* ToolbarView.swift */,
 				0917D4F12DD1FEF700F49352 /* TouchTypeDetectionView.swift */,
 				58A4C39F28F0E74700E16278 /* WhiteboardView.swift */,
+				09E06C042DE1D29B00D11095 /* SavedPlayService.swift */,
 				09ACAB7A2DD8BE85006310D7 /* OnboardingView.swift */,
 				09ACAB742DD8B918006310D7 /* AuthView.swift */,
 				09ACAB752DD8B918006310D7 /* AuthViewModel.swift */,
 				09758C142DAD2E9F00AC52ED /* SavePlaySheet.swift */,
-				09CCAB632DAC1B06001FC93E /* SavedPlay.swift */,
 				58A4C39428F0E72E00E16278 /* Assets.xcassets */,
 				58A4C39928F0E72E00E16278 /* Info.plist */,
 				097108112DDB0BD80022D852 /* GoogleService-Info.plist */,
@@ -217,6 +220,7 @@
 			files = (
 				58A4C39328F0E72C00E16278 /* HomeScreen.swift in Sources */,
 				58A4C3A028F0E74700E16278 /* WhiteboardView.swift in Sources */,
+				09E06C082DE2F8E300D11095 /* AppDelegate.swift in Sources */,
 				58A4C39128F0E72C00E16278 /* boARdApp.swift in Sources */,
 				09ACAB7B2DD8BE85006310D7 /* OnboardingView.swift in Sources */,
 				0917D4F22DD1FEF700F49352 /* BasketballsView.swift in Sources */,
@@ -226,12 +230,12 @@
 				0917D4F62DD1FEF700F49352 /* ToolbarView.swift in Sources */,
 				0917D4F72DD1FEF700F49352 /* Models.swift in Sources */,
 				09ACAB792DD8BC2C006310D7 /* ProfileView.swift in Sources */,
+				09E06C052DE1D29B00D11095 /* SavedPlayService.swift in Sources */,
 				0917D4F82DD1FEF700F49352 /* CourtImageView.swift in Sources */,
 				0917D4F92DD1FEF700F49352 /* OpponentsView.swift in Sources */,
 				0917D4FA2DD1FEF700F49352 /* PlayersView.swift in Sources */,
 				09ACAB762DD8B919006310D7 /* AuthViewModel.swift in Sources */,
 				09ACAB772DD8B919006310D7 /* AuthView.swift in Sources */,
-				09CCAB642DAC1B06001FC93E /* SavedPlay.swift in Sources */,
 				09758C152DAD2E9F00AC52ED /* SavePlaySheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

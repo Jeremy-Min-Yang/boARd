@@ -5,10 +5,10 @@ import FirebaseCore
 struct boARdApp: App {
     @StateObject private var authViewModel = AuthViewModel()
     @State private var isLoading = true
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     // Initialize the SavedPlayService on app launch
     init() {
-        FirebaseApp.configure()
         // Perform any initial setup for saved plays here
         _ = SavedPlayService.shared
         // Set navigation bar appearance for light/dark mode

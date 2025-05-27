@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AuthView: View {
-    @StateObject private var viewModel = AuthViewModel()
+    @EnvironmentObject var viewModel: AuthViewModel
     @State private var email = ""
     @State private var password = ""
     @State private var isSignUp = false
@@ -124,6 +124,6 @@ struct AuthView: View {
 
 struct AuthView_Previews: PreviewProvider {
     static var previews: some View {
-        AuthView()
+        AuthView().environmentObject(AuthViewModel())
     }
 } 

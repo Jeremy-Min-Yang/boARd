@@ -173,4 +173,66 @@ func screenToVirtual(_ point: CGPoint, courtType: CourtType, viewSize: CGSize) -
         x: (point.x - offsetX) / scale,
         y: (point.y - offsetY) / scale
     )
+}
+
+// MARK: - Data Models for Persistence
+
+struct Models {
+    struct SavedPlay: Codable, Identifiable {
+        public var firestoreID: String?
+        public var id = UUID()
+        public var userID: String?
+        public var name: String
+        public var dateCreated: Date
+        public var lastModified: Date
+        public var courtType: String
+
+        public var drawings: [DrawingData]
+        public var players: [PlayerData]
+        public var basketballs: [BasketballData]
+
+        public var courtTypeEnum: CourtType {
+            return courtType == "full" ? .full : .half
+        }
+    }
+
+    struct DrawingData: Codable, Identifiable {
+        public var id: UUID
+        public var color: String
+        public var lineWidth: CGFloat
+        public var type: String
+        public var style: String
+        public var points: [PointData]
+        public var normalizedPoints: [PointData]?
+        public var associatedPlayerIndex: Int?
+        public var isHighlightedDuringAnimation: Bool
+    }
+
+    struct PlayerData: Codable, Identifiable {
+        public var id: UUID
+        public var position: PointData
+        public var number: Int
+        public var normalizedPosition: PointData?
+        public var assignedPathId: UUID?
+    }
+
+    struct BasketballData: Codable, Identifiable {
+        public var id = UUID()
+        public var position: PointData
+        public var normalizedPosition: PointData?
+        public var assignedPathId: UUID?
+    }
+
+    struct PointData: Codable {
+        public var x: CGFloat
+        public var y: CGFloat
+
+        public var cgPoint: CGPoint {
+            return CGPoint(x: x, y: y)
+        }
+
+        public static func from(cgPoint: CGPoint) -> PointData {
+            return PointData(x: cgPoint.x, y: cgPoint.y)
+        }
+    }
 } 

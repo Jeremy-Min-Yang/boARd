@@ -24,6 +24,19 @@ class AuthViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Onboarding Persistence (per user)
+    private func onboardingKey(for userId: String) -> String {
+        return "onboardingShown_\(userId)"
+    }
+    
+    func getOnboardingCompleted(for userId: String) -> Bool {
+        UserDefaults.standard.bool(forKey: onboardingKey(for: userId))
+    }
+    
+    func setOnboardingCompleted(for userId: String) {
+        UserDefaults.standard.set(true, forKey: onboardingKey(for: userId))
+    }
+    
     func signIn(email: String, password: String) {
         isLoading = true
         errorMessage = nil
@@ -48,7 +61,7 @@ class AuthViewModel: ObservableObject {
                     self?.user = user
                     self?.justSignedUp = false
                     self?.checkUserProfile(userId: user.uid) { hasProfile in
-                        self?.hasCompletedOnboarding = hasProfile
+                        self?.hasCompletedOnboarding = self?.getOnboardingCompleted(for: user.uid) ?? hasProfile
                     }
                 }
             }
@@ -77,7 +90,7 @@ class AuthViewModel: ObservableObject {
                     self?.user = user
                     self?.justSignedUp = true
                     self?.checkUserProfile(userId: user.uid) { hasProfile in
-                        self?.hasCompletedOnboarding = hasProfile
+                        self?.hasCompletedOnboarding = self?.getOnboardingCompleted(for: user.uid) ?? hasProfile
                     }
                 }
             }
