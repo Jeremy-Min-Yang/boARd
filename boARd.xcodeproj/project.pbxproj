@@ -28,6 +28,9 @@
 		09ACAB772DD8B919006310D7 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACAB742DD8B918006310D7 /* AuthView.swift */; };
 		09ACAB792DD8BC2C006310D7 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACAB782DD8BC2C006310D7 /* ProfileView.swift */; };
 		09ACAB7B2DD8BE85006310D7 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACAB7A2DD8BE85006310D7 /* OnboardingView.swift */; };
+		09B94BC82DE58FD80097DDA9 /* ARPlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09B94BC72DE58FD80097DDA9 /* ARPlayView.swift */; };
+		09B94BCB2DE598970097DDA9 /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09B94BCA2DE598970097DDA9 /* ARKit.framework */; };
+		09B94BCD2DE598A10097DDA9 /* RealityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09B94BCC2DE598A10097DDA9 /* RealityKit.framework */; };
 		09E06C052DE1D29B00D11095 /* SavedPlayService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09E06C042DE1D29B00D11095 /* SavedPlayService.swift */; };
 		09E06C082DE2F8E300D11095 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09E06C072DE2F8E300D11095 /* AppDelegate.swift */; };
 		58A4C39128F0E72C00E16278 /* boARdApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4C39028F0E72C00E16278 /* boARdApp.swift */; };
@@ -54,6 +57,9 @@
 		09ACAB752DD8B918006310D7 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		09ACAB782DD8BC2C006310D7 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		09ACAB7A2DD8BE85006310D7 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		09B94BC72DE58FD80097DDA9 /* ARPlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARPlayView.swift; sourceTree = "<group>"; };
+		09B94BCA2DE598970097DDA9 /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
+		09B94BCC2DE598A10097DDA9 /* RealityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RealityKit.framework; path = System/Library/Frameworks/RealityKit.framework; sourceTree = SDKROOT; };
 		09E06C042DE1D29B00D11095 /* SavedPlayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedPlayService.swift; sourceTree = "<group>"; };
 		09E06C072DE2F8E300D11095 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		58A4C38D28F0E72C00E16278 /* boARd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = boARd.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -70,6 +76,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				09B94BCD2DE598A10097DDA9 /* RealityKit.framework in Frameworks */,
+				09B94BCB2DE598970097DDA9 /* ARKit.framework in Frameworks */,
 				09ACAB6F2DD8B54D006310D7 /* FirebaseDatabase in Frameworks */,
 				09ACAB712DD8B54D006310D7 /* FirebaseFirestore in Frameworks */,
 				09ACAB6B2DD8B54D006310D7 /* FirebaseAnalytics in Frameworks */,
@@ -89,12 +97,22 @@
 			path = "Preview Content";
 			sourceTree = "<group>";
 		};
+		09B94BC92DE598970097DDA9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				09B94BCC2DE598A10097DDA9 /* RealityKit.framework */,
+				09B94BCA2DE598970097DDA9 /* ARKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		58A4C38428F0E72C00E16278 = {
 			isa = PBXGroup;
 			children = (
 				58A4C38F28F0E72C00E16278 /* boARd */,
 				58A4C38E28F0E72C00E16278 /* Products */,
 				09E06C072DE2F8E300D11095 /* AppDelegate.swift */,
+				09B94BC92DE598970097DDA9 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -119,6 +137,7 @@
 				0917D4EC2DD1FEF700F49352 /* OpponentsView.swift */,
 				0917D4ED2DD1FEF700F49352 /* PlayersView.swift */,
 				09ACAB782DD8BC2C006310D7 /* ProfileView.swift */,
+				09B94BC72DE58FD80097DDA9 /* ARPlayView.swift */,
 				0917D4EF2DD1FEF700F49352 /* Preview Content */,
 				0917D4F02DD1FEF700F49352 /* ToolbarView.swift */,
 				0917D4F12DD1FEF700F49352 /* TouchTypeDetectionView.swift */,
@@ -225,6 +244,7 @@
 				09ACAB7B2DD8BE85006310D7 /* OnboardingView.swift in Sources */,
 				0917D4F22DD1FEF700F49352 /* BasketballsView.swift in Sources */,
 				0917D4F32DD1FEF700F49352 /* DrawingLayer.swift in Sources */,
+				09B94BC82DE58FD80097DDA9 /* ARPlayView.swift in Sources */,
 				0917D4F42DD1FEF700F49352 /* Extensions.swift in Sources */,
 				0917D4F52DD1FEF700F49352 /* TouchTypeDetectionView.swift in Sources */,
 				0917D4F62DD1FEF700F49352 /* ToolbarView.swift in Sources */,

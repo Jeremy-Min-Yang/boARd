@@ -6,6 +6,10 @@ struct boARdApp: App {
     @StateObject private var authViewModel = AuthViewModel()
     @State private var isLoading = true
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    // AR state at app level
+    @State private var showARSheet = false
+    @State private var arPlay: Models.SavedPlay? = nil
+    @State private var triggerARAnimation = false
     
     // Initialize the SavedPlayService on app launch
     init() {
@@ -34,8 +38,11 @@ struct boARdApp: App {
                 } else {
                     NavigationView {
                         ZStack {
-                            HomeScreen()
-                                .opacity(isLoading ? 0 : 1)
+                            HomeScreen(
+                                showARSheet: $showARSheet,
+                                arPlay: $arPlay
+                            )
+                            .opacity(isLoading ? 0 : 1)
                             if isLoading {
                                 LoadingView()
                                     .onAppear {
@@ -54,6 +61,78 @@ struct boARdApp: App {
             }
             .onAppear {
                 print("Auth State -- user: \(String(describing: authViewModel.user?.uid)), justSignedUp: \(authViewModel.justSignedUp), hasCompletedOnboarding: \(authViewModel.hasCompletedOnboarding)")
+            }
+            .fullScreenCover(isPresented: $showARSheet) {
+                // Content for the sheet
+                if let currentPlay = arPlay {
+                    ZStack(alignment: .bottom) {
+                        ARPlayView(play: currentPlay, shouldStartAnimationBinding: $triggerARAnimation)
+                            .edgesIgnoringSafeArea(.all)
+                            .onAppear {
+                                print("[DEBUG] ARPlayView .onAppear triggered (App level) for play: \(currentPlay.name)")
+                                triggerARAnimation = false
+                            }
+                        
+                        // Play Button
+                        Button(action: {
+                            print("[boARdApp] Play button tapped. Setting triggerARAnimation to true.")
+                            triggerARAnimation = true
+                        }) {
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 50))
+                                .foregroundColor(.white)
+                                .padding()
+                                .background(Color.black.opacity(0.5))
+                                .clipShape(Circle())
+                        }
+                        .padding(.bottom, 30)
+
+                        // Close Button (Top Right)
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Button(action: {
+                                    print("[boARdApp] Close AR View button tapped.")
+                                    showARSheet = false
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 30))
+                                        .foregroundColor(.white)
+                                        .padding()
+                                        .background(Color.black.opacity(0.5))
+                                        .clipShape(Circle())
+                                }
+                                .padding([.top, .trailing], 20)
+                            }
+                            Spacer()
+                        }
+                        .edgesIgnoringSafeArea(.all) // Allow button to be in safe area
+
+                    }
+                } else {
+                    VStack {
+                        Text("AR Play data is not available.")
+                            .onAppear {
+                                print("[boARdApp] fullScreenCover: arPlay was nil when attempting to show AR content.")
+                            }
+                        Button("Dismiss") {
+                            showARSheet = false
+                        }
+                        .padding()
+                    }
+                }
+            }
+            .onChange(of: showARSheet) { newValue in
+                if newValue {
+                    print("[boARdApp] fullScreenCover attempting to present (showARSheet is true). arPlay is: \(arPlay == nil ? "nil" : "not nil, play name: \(arPlay?.name ?? "Unknown Play")")")
+                    if arPlay == nil {
+                        // If arPlay is nil when sheet is supposed to show, maybe auto-dismiss or handle error.
+                        // For now, the else branch in fullScreenCover will show the error text.
+                    }
+                } else {
+                    triggerARAnimation = false
+                    print("[boARdApp] fullScreenCover dismissed. triggerARAnimation reset to false.")
+                }
             }
         }
     }

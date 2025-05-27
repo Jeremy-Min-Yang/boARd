@@ -2,6 +2,8 @@ import SwiftUI
 import FirebaseAuth
 
 struct HomeScreen: View {
+    @Binding var showARSheet: Bool
+    @Binding var arPlay: Models.SavedPlay?
     @State private var selectedTab: MainTab = .home
     @State private var showCourtOptions = false
     @State private var selectedCourtType: CourtType?
@@ -90,7 +92,9 @@ struct HomeScreen: View {
                         selectedPlay: $selectedPlay,
                         editMode: $editMode,
                         viewOnlyMode: $viewOnlyMode,
-                        navigateToWhiteboard: $navigateToWhiteboard
+                        navigateToWhiteboard: $navigateToWhiteboard,
+                        showARSheet: $showARSheet,
+                        arPlay: $arPlay
                     )
                 case .profile:
                     ProfileView()
@@ -144,6 +148,8 @@ struct SavedPlaysScreen: View {
     @Binding var editMode: Bool
     @Binding var viewOnlyMode: Bool
     @Binding var navigateToWhiteboard: Bool
+    @Binding var showARSheet: Bool
+    @Binding var arPlay: Models.SavedPlay?
     @State private var savedPlays: [Models.SavedPlay] = []
     @State private var syncStatus: String = ""
     @State private var isSyncing: Bool = false
@@ -256,6 +262,11 @@ struct SavedPlaysScreen: View {
                                             viewOnlyMode = true
                                             navigateToWhiteboard = true
                                         },
+                                        onAR: {
+                                            print("[DEBUG] onAR closure called for play: \(play.name)")
+                                            arPlay = play
+                                            showARSheet = true
+                                        },
                                         onDelete: {
                                             deletePlay(play)
                                         },
@@ -312,6 +323,7 @@ struct SavedPlayRow: View {
     let dateFormatter: DateFormatter
     let onEdit: () -> Void
     let onView: () -> Void
+    let onAR: () -> Void
     let onDelete: () -> Void
     let onUpload: () -> Void
     let isUploading: Bool
@@ -341,6 +353,13 @@ struct SavedPlayRow: View {
                     Button(action: onView) {
                         Image(systemName: "eye")
                             .foregroundColor(.green)
+                    }
+                    Button(action: {
+                        print("[DEBUG] AR button tapped for play: \(play.name)")
+                        onAR()
+                    }) {
+                        Image(systemName: "cube")
+                            .foregroundColor(.purple)
                     }
                     Button(action: {
                         showDeleteConfirmation = true
@@ -506,6 +525,6 @@ struct MainTabBar: View {
 
 struct HomeScreen_Previews: PreviewProvider {
     static var previews: some View {
-        HomeScreen()
+        HomeScreen(showARSheet: .constant(false), arPlay: .constant(nil))
     }
 }
