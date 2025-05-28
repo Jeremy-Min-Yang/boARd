@@ -17,7 +17,6 @@
 		0917D4F92DD1FEF700F49352 /* OpponentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4EC2DD1FEF700F49352 /* OpponentsView.swift */; };
 		0917D4FA2DD1FEF700F49352 /* PlayersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4ED2DD1FEF700F49352 /* PlayersView.swift */; };
 		0917D4FB2DD1FEF700F49352 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0917D4EE2DD1FEF700F49352 /* Preview Assets.xcassets */; };
-		097108122DDB0BD80022D852 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 097108112DDB0BD80022D852 /* GoogleService-Info.plist */; };
 		09758C152DAD2E9F00AC52ED /* SavePlaySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09758C142DAD2E9F00AC52ED /* SavePlaySheet.swift */; };
 		09ACAB6B2DD8B54D006310D7 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 09ACAB6A2DD8B54D006310D7 /* FirebaseAnalytics */; };
 		09ACAB6D2DD8B54D006310D7 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 09ACAB6C2DD8B54D006310D7 /* FirebaseAuth */; };
@@ -38,6 +37,10 @@
 		58A4C39528F0E72E00E16278 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 58A4C39428F0E72E00E16278 /* Assets.xcassets */; };
 		58A4C39828F0E72E00E16278 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 58A4C39728F0E72E00E16278 /* Preview Assets.xcassets */; };
 		58A4C3A028F0E74700E16278 /* WhiteboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4C39F28F0E74700E16278 /* WhiteboardView.swift */; };
+		EC1609BD2DE7070D00E4C4E0 /* ball.usdz in Resources */ = {isa = PBXBuildFile; fileRef = EC1609BC2DE7070D00E4C4E0 /* ball.usdz */; };
+		EC1609BF2DE7071B00E4C4E0 /* hoop_court.usdz in Resources */ = {isa = PBXBuildFile; fileRef = EC1609BE2DE7071B00E4C4E0 /* hoop_court.usdz */; };
+		EC1609C32DE711CE00E4C4E0 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = EC1609C22DE711CE00E4C4E0 /* GoogleService-Info.plist */; };
+		EC1609C52DE741E100E4C4E0 /* cylinder.usdz in Resources */ = {isa = PBXBuildFile; fileRef = EC1609C42DE741E100E4C4E0 /* cylinder.usdz */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -51,7 +54,6 @@
 		0917D4EE2DD1FEF700F49352 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		0917D4F02DD1FEF700F49352 /* ToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarView.swift; sourceTree = "<group>"; };
 		0917D4F12DD1FEF700F49352 /* TouchTypeDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TouchTypeDetectionView.swift; sourceTree = "<group>"; };
-		097108112DDB0BD80022D852 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		09758C142DAD2E9F00AC52ED /* SavePlaySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavePlaySheet.swift; sourceTree = "<group>"; };
 		09ACAB742DD8B918006310D7 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		09ACAB752DD8B918006310D7 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
@@ -69,6 +71,10 @@
 		58A4C39728F0E72E00E16278 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		58A4C39928F0E72E00E16278 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		58A4C39F28F0E74700E16278 /* WhiteboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhiteboardView.swift; sourceTree = "<group>"; };
+		EC1609BC2DE7070D00E4C4E0 /* ball.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = ball.usdz; sourceTree = "<group>"; };
+		EC1609BE2DE7071B00E4C4E0 /* hoop_court.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = hoop_court.usdz; sourceTree = "<group>"; };
+		EC1609C22DE711CE00E4C4E0 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		EC1609C42DE741E100E4C4E0 /* cylinder.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = cylinder.usdz; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -137,6 +143,9 @@
 				0917D4EC2DD1FEF700F49352 /* OpponentsView.swift */,
 				0917D4ED2DD1FEF700F49352 /* PlayersView.swift */,
 				09ACAB782DD8BC2C006310D7 /* ProfileView.swift */,
+				EC1609BE2DE7071B00E4C4E0 /* hoop_court.usdz */,
+				EC1609C42DE741E100E4C4E0 /* cylinder.usdz */,
+				EC1609BC2DE7070D00E4C4E0 /* ball.usdz */,
 				09B94BC72DE58FD80097DDA9 /* ARPlayView.swift */,
 				0917D4EF2DD1FEF700F49352 /* Preview Content */,
 				0917D4F02DD1FEF700F49352 /* ToolbarView.swift */,
@@ -148,8 +157,8 @@
 				09ACAB752DD8B918006310D7 /* AuthViewModel.swift */,
 				09758C142DAD2E9F00AC52ED /* SavePlaySheet.swift */,
 				58A4C39428F0E72E00E16278 /* Assets.xcassets */,
+				EC1609C22DE711CE00E4C4E0 /* GoogleService-Info.plist */,
 				58A4C39928F0E72E00E16278 /* Info.plist */,
-				097108112DDB0BD80022D852 /* GoogleService-Info.plist */,
 				58A4C39628F0E72E00E16278 /* Preview Content */,
 			);
 			path = boARd;
@@ -223,10 +232,13 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EC1609C52DE741E100E4C4E0 /* cylinder.usdz in Resources */,
+				EC1609BD2DE7070D00E4C4E0 /* ball.usdz in Resources */,
 				58A4C39828F0E72E00E16278 /* Preview Assets.xcassets in Resources */,
-				097108122DDB0BD80022D852 /* GoogleService-Info.plist in Resources */,
+				EC1609BF2DE7071B00E4C4E0 /* hoop_court.usdz in Resources */,
 				0917D4FB2DD1FEF700F49352 /* Preview Assets.xcassets in Resources */,
 				58A4C39528F0E72E00E16278 /* Assets.xcassets in Resources */,
+				EC1609C32DE711CE00E4C4E0 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -386,7 +398,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"boARd/Preview Content\"";
-				DEVELOPMENT_TEAM = 5WNL3YH7K3;
+				DEVELOPMENT_TEAM = SSQX6X5G5A;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = boARd/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -394,7 +406,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.jeremy.boARd;
+				PRODUCT_BUNDLE_IDENTIFIER = com.andyahn.boARd;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -408,7 +420,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"boARd/Preview Content\"";
-				DEVELOPMENT_TEAM = 5WNL3YH7K3;
+				DEVELOPMENT_TEAM = SSQX6X5G5A;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = boARd/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -416,7 +428,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.jeremy.boARd;
+				PRODUCT_BUNDLE_IDENTIFIER = com.andyahn.boARd;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

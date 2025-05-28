@@ -56,16 +56,35 @@ struct ARPlayView: UIViewRepresentable {
         let arCourtWidth: Float = 1.0
         let arCourtHeight: Float = Float(courtSize.height / courtSize.width)
 
-        let courtMesh = MeshResource.generatePlane(width: arCourtWidth, depth: arCourtHeight)
-        let courtMaterial = SimpleMaterial(color: .yellow, isMetallic: false)
-        let courtEntity = ModelEntity(mesh: courtMesh, materials: [courtMaterial])
+        // Load the hoop_court.usdz model instead of creating a plane
+        let courtEntity: ModelEntity
+        do {
+            courtEntity = try ModelEntity.loadModel(named: "hoop_court")
+            // Scale the court entity to a reasonable size
+            courtEntity.scale = [0.001, 0.001, 0.001] // Adjusted scale to 0.001
+            // Rotate the court 90 degrees around Y axis
+            courtEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
+            print("[ARPlayView] Successfully loaded 'hoop_court.usdz' for the court and scaled it.")
+        } catch {
+            print("[ARPlayView] ERROR loading 'hoop_court.usdz': \(error.localizedDescription). Falling back to default yellow plane.")
+            let courtMesh = MeshResource.generatePlane(width: arCourtWidth, depth: arCourtHeight)
+            let courtMaterial = SimpleMaterial(color: .yellow, isMetallic: false)
+            courtEntity = ModelEntity(mesh: courtMesh, materials: [courtMaterial])
+        }
         courtEntity.generateCollisionShapes(recursive: true)
+
+        // Create separate anchors for court and players/basketballs
+        let courtAnchor = AnchorEntity(plane: .horizontal)
+        let playersAnchor = AnchorEntity(plane: .horizontal)
         
-        let courtAnchor = AnchorEntity(plane: .horizontal) 
+        // First place the court
         courtAnchor.addChild(courtEntity)
         courtEntity.position = [0,0,0]
         arView.scene.addAnchor(courtAnchor)
-        print("[ARPlayView] Court (yellow) and anchor added to scene.")
+        
+        // Then place the players and basketballs
+        arView.scene.addAnchor(playersAnchor)
+        print("[ARPlayView] Court (hoop_court.usdz) and anchors added to scene.")
         
         // Prepare animation data and store it in the coordinator
         context.coordinator.animationDataMap = ARPlayView.prepareAnimationData(
@@ -73,7 +92,7 @@ struct ARPlayView: UIViewRepresentable {
             courtSize: courtSize, 
             arCourtWidth: arCourtWidth, 
             arCourtHeight: arCourtHeight, 
-            courtAnchor: courtAnchor
+            courtAnchor: playersAnchor  // Pass playersAnchor instead of courtAnchor
         )
         print("[ARPlayView] Prepared animation data for \(context.coordinator.animationDataMap.count) entities (in makeUIView, stored in coordinator).")
 
@@ -116,22 +135,22 @@ struct ARPlayView: UIViewRepresentable {
             
             let playerEntity: ModelEntity
             do {
-                // Try to load the custom player model
-                // Assumes you have a 'player_model.usdz' file in your project
-                playerEntity = try ModelEntity.loadModel(named: "player_model")
-                // You might need to scale or rotate your model here if it's not a perfect fit
-                // playerEntity.scale = [0.01, 0.01, 0.01] // Example: Adjust scale as needed
-                // playerEntity.orientation = simd_quatf(angle: .pi, axis: [0,1,0]) // Example: Rotate 180 degrees around Y
-                print("[ARPlayView prepareAnimationData] Successfully loaded 'player_model.usdz' for player \(player.id)")
+                // Try to load the cylinder model
+                playerEntity = try ModelEntity.loadModel(named: "cylinder")
+                // Scale the cylinder to match the court scale
+                playerEntity.scale = [0.0005, 0.0005, 0.0005]
+                print("[ARPlayView prepareAnimationData] Successfully loaded 'cylinder.usdz' for player \(player.id)")
             } catch {
-                print("[ARPlayView prepareAnimationData] ERROR loading 'player_model.usdz': \(error.localizedDescription). Using default green sphere.")
+                print("[ARPlayView prepareAnimationData] ERROR loading 'cylinder.usdz': \(error.localizedDescription). Using default green sphere.")
                 // Fallback to a sphere if loading fails
                 playerEntity = ModelEntity(mesh: MeshResource.generateSphere(radius: 0.02),
                                            materials: [SimpleMaterial(color: .green, isMetallic: false)])
             }
             
             // Use static version of map2DToAR
-            let initialPosAR = ARPlayView.map2DToAR(player.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let initialPosAR = ARPlayView.rotate180Y(
+                ARPlayView.map2DToAR(player.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            )
             playerEntity.position = initialPosAR
             playerEntity.name = "player_\(player.id)"
             courtAnchor.addChild(playerEntity)
@@ -140,7 +159,8 @@ struct ARPlayView: UIViewRepresentable {
                let drawingData = play.drawings.first(where: { $0.id == pathId }) {
                 // Use static version of map2DToAR
                 let arPathPoints = drawingData.points.map { ARPlayView.map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
-                var animationPathPointsAR = arPathPoints.count >= 2 && drawingData.type == DrawingTool.arrow.rawValue ? [arPathPoints.first!, arPathPoints.last!] : arPathPoints
+                let rotatedPathPoints = arPathPoints.map { ARPlayView.rotate180Y($0) }
+                var animationPathPointsAR = rotatedPathPoints.count >= 2 && drawingData.type == DrawingTool.arrow.rawValue ? [rotatedPathPoints.first!, rotatedPathPoints.last!] : rotatedPathPoints
 
                 if !animationPathPointsAR.isEmpty {
                     // Use static version of calculateARPathLength
@@ -158,20 +178,21 @@ struct ARPlayView: UIViewRepresentable {
             let ballEntity: ModelEntity
             do {
                 // Try to load the custom basketball model
-                // Assumes you have a 'basketball_model.usdz' file in your project
-                ballEntity = try ModelEntity.loadModel(named: "basketball_model")
-                // You might need to scale or rotate your model here
-                // ballEntity.scale = [0.005, 0.005, 0.005] // Example: Adjust scale
-                print("[ARPlayView prepareAnimationData] Successfully loaded 'basketball_model.usdz' for ball \(ballData.id)")
+                ballEntity = try ModelEntity.loadModel(named: "ball")
+                // Scale the ball to match the court scale
+                ballEntity.scale = [0.001, 0.001, 0.001]
+                print("[ARPlayView prepareAnimationData] Successfully loaded 'ball.usdz' for ball \(ballData.id)")
             } catch {
-                print("[ARPlayView prepareAnimationData] ERROR loading 'basketball_model.usdz': \(error.localizedDescription). Using default orange sphere.")
+                print("[ARPlayView prepareAnimationData] ERROR loading 'ball.usdz': \(error.localizedDescription). Using default orange sphere.")
                 // Fallback to a sphere if loading fails
                 ballEntity = ModelEntity(mesh: MeshResource.generateSphere(radius: 0.015),
                                          materials: [SimpleMaterial(color: .orange, isMetallic: false)])
             }
 
             // Use static version of map2DToAR
-            let initialPosAR = ARPlayView.map2DToAR(ballData.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let initialPosAR = ARPlayView.rotate180Y(
+                ARPlayView.map2DToAR(ballData.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            )
             ballEntity.position = initialPosAR
             ballEntity.name = "ball_\(ballData.id)"
             courtAnchor.addChild(ballEntity)
@@ -179,7 +200,8 @@ struct ARPlayView: UIViewRepresentable {
                let drawingData = play.drawings.first(where: { $0.id == pathId }) {
                 // Use static version of map2DToAR
                 let arPathPoints = drawingData.points.map { ARPlayView.map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
-                var animationPathPointsAR = arPathPoints.count >= 2 && drawingData.type == DrawingTool.arrow.rawValue ? [arPathPoints.first!, arPathPoints.last!] : arPathPoints
+                let rotatedPathPoints = arPathPoints.map { ARPlayView.rotate180Y($0) }
+                var animationPathPointsAR = rotatedPathPoints.count >= 2 && drawingData.type == DrawingTool.arrow.rawValue ? [rotatedPathPoints.first!, rotatedPathPoints.last!] : rotatedPathPoints
 
                 if !animationPathPointsAR.isEmpty {
                     // Use static version of calculateARPathLength
@@ -274,6 +296,11 @@ struct ARPlayView: UIViewRepresentable {
             distanceCovered += segmentLength
         }
         return points.last
+    }
+
+    // Helper to rotate a position 180 degrees around Y axis about the origin
+    static func rotate180Y(_ pos: SIMD3<Float>) -> SIMD3<Float> {
+        return SIMD3<Float>(-pos.x, pos.y, -pos.z)
     }
 
     class Coordinator: NSObject, ARCoachingOverlayViewDelegate, ARSessionDelegate {
