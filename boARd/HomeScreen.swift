@@ -83,7 +83,14 @@ struct HomeScreen: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .padding(.horizontal, 20)
                 case .team:
-                    Text("Team View")
+                    TeamPlaysView(
+                        showARSheet: $showARSheet, 
+                        arPlay: $arPlay,
+                        selectedPlayForSheet: $selectedPlay, // For viewing/AR from team context
+                        navigateToWhiteboard: $navigateToWhiteboard,
+                        editModeForSheet: $editMode, // To set view-only mode
+                        viewOnlyModeForSheet: $viewOnlyMode
+                    )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .add:
                     EmptyView()
@@ -141,6 +148,155 @@ struct HomeScreen: View {
             )
         }
     }
+}
+
+struct TeamPlaysView: View {
+    @Binding var showARSheet: Bool
+    @Binding var arPlay: Models.SavedPlay?
+    @Binding var selectedPlayForSheet: Models.SavedPlay? // To trigger navigation/sheet
+    @Binding var navigateToWhiteboard: Bool
+    @Binding var editModeForSheet: Bool
+    @Binding var viewOnlyModeForSheet: Bool
+
+    @State private var teamPlays: [Models.SavedPlay] = []
+    @State private var isLoading: Bool = true
+    @State private var currentTeamID: String?
+    @State private var errorMessage: String?
+
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    var body: some View {
+        NavigationView { // Added NavigationView for a title
+            VStack {
+                if isLoading {
+                    ProgressView("Loading Team Plays...")
+                        .padding()
+                } else if let teamID = currentTeamID {
+                    if let error = errorMessage {
+                        Text("Error: \(error)")
+                            .foregroundColor(.red)
+                            .padding()
+                    }
+                    if teamPlays.isEmpty && errorMessage == nil {
+                        VStack {
+                            Text("No Plays for Your Team Yet")
+                                .font(.headline)
+                                .padding(.bottom)
+                            Text("Once plays are added to team '\(teamID)', they will appear here.")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                        .padding()
+                    } else if !teamPlays.isEmpty {
+                        List {
+                            ForEach(teamPlays) { play in
+                                SavedPlayRow(
+                                    play: play,
+                                    dateFormatter: dateFormatter,
+                                    onEdit: {
+                                        // For team plays, typically view-only or restricted edit
+                                        // For now, let's make it view-only
+                                        selectedPlayForSheet = play
+                                        editModeForSheet = false // Explicitly false for edit
+                                        viewOnlyModeForSheet = true // Explicitly true for view
+                                        navigateToWhiteboard = true
+                                    },
+                                    onView: {
+                                        selectedPlayForSheet = play
+                                        editModeForSheet = false
+                                        viewOnlyModeForSheet = true
+                                        navigateToWhiteboard = true
+                                    },
+                                    onAR: {
+                                        arPlay = play
+                                        showARSheet = true
+                                    },
+                                    onDelete: {
+                                        // Deleting team plays needs permission checks.
+                                        // For now, this action can be disabled or show an alert.
+                                        print("Attempted to delete team play: \(play.name). Not implemented yet.")
+                                        // self.deleteTeamPlay(play) // Placeholder for future
+                                    },
+                                    onUpload: {
+                                        // Uploading is not applicable for plays already in a team context.
+                                        print("Upload button pressed for team play: \(play.name). No action taken.")
+                                    },
+                                    isUploading: false, // Never uploading from team view like this
+                                    uploadSuccess: false // Not applicable
+                                )
+                            }
+                        }
+                        .listStyle(PlainListStyle()) // Use PlainListStyle for better appearance
+                    }
+                } else {
+                    VStack {
+                        Text("Not Part of a Team")
+                            .font(.headline)
+                            .padding(.bottom)
+                        Text("Please join or create a team from your Profile to see shared plays.")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                        // Optional: Button to navigate to Profile
+                        // NavigationLink("Go to Profile", destination: ProfileView()) // Requires ProfileView to be embeddable or use a tab switch
+                    }
+                    .padding()
+                }
+                Spacer() // Pushes content to the top if list is short or view is empty
+            }
+            .navigationTitle("Team Plays") // Set a navigation title
+            .onAppear {
+                fetchTeamData()
+            }
+        }
+         .navigationViewStyle(StackNavigationViewStyle()) // Use stack style for larger screens if needed
+    }
+
+    func fetchTeamData() {
+        isLoading = true
+        errorMessage = nil
+        self.currentTeamID = UserService.shared.getCurrentUserTeamID() // Get current user's team ID
+
+        if let teamID = self.currentTeamID {
+            SavedPlayService.shared.fetchPlaysForTeam(teamID: teamID) { result in
+                DispatchQueue.main.async {
+                    isLoading = false
+                    switch result {
+                    case .success(let plays):
+                        self.teamPlays = plays.sorted { $0.lastModified > $1.lastModified }
+                        if self.teamPlays.isEmpty {
+                            print("No plays found for team ID: \(teamID)")
+                        }
+                    case .failure(let error):
+                        print("Error fetching team plays: \(error.localizedDescription)")
+                        self.errorMessage = error.localizedDescription
+                    }
+                }
+            }
+        } else {
+            isLoading = false
+            print("User is not part of any team.")
+        }
+    }
+    
+    // Placeholder for deleting a team play (would need permissions)
+    /*
+    private func deleteTeamPlay(_ play: Models.SavedPlay) {
+        // 1. Check permissions (e.g., is user creator or team admin?)
+        // 2. If permitted, call SavedPlayService.shared.deletePlay(playID: play.id.uuidString) { ... }
+        // 3. On success, remove from self.teamPlays and potentially refresh
+        teamPlays.removeAll { $0.id == play.id }
+        // SavedPlayService.shared.deletePlay(playID: play.id.uuidString) { error in ... }
+    }
+    */
 }
 
 struct SavedPlaysScreen: View {

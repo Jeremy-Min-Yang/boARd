@@ -91,6 +91,7 @@ struct ContentView: View {
     @State private var isAnimating = false
     @State private var entityMap: [UUID: ModelEntity] = [:]
     @State private var arViewInstance: CustomARView? = nil
+    @State private var isCourtAdjustmentModeEnabled = false // New state for adjustment mode
 
     static let walkingSpeed: Float = 0.2 // meters per second (adjust as needed)
 
@@ -131,27 +132,38 @@ struct ContentView: View {
                               models: self.models,
                               placedModels: self.$placedModels)
             }
+            // Button to toggle court adjustment mode
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        isCourtAdjustmentModeEnabled.toggle()
+                        // Optionally provide feedback to CustomARView about the mode change
+                        arViewInstance?.isCourtAdjustmentModeEnabled = isCourtAdjustmentModeEnabled
+                        print("DEBUG: Court Adjustment Mode: \(isCourtAdjustmentModeEnabled)")
+                    }) {
+                        Image(systemName: isCourtAdjustmentModeEnabled ? "arrow.up.left.and.down.right.and.arrow.up.right.and.down.left" : "arrow.up.and.down.and.arrow.left.and.right")
+                            .font(.title)
+                            .padding()
+                            .background(isCourtAdjustmentModeEnabled ? Color.blue.opacity(0.7) : Color.white.opacity(0.7))
+                            .foregroundColor(isCourtAdjustmentModeEnabled ? .white : .blue)
+                            .clipShape(Circle())
+                    }
+                    .padding(.trailing, 20)
+                    .padding(.bottom, placedModels.contains("hoop_court") ? 100 : 20) // Adjust bottom padding if play button is visible
+                }
+            }
             // Play button
             let _ = { print("DEBUG: Play button condition - placedModels: \(placedModels), isAnimating: \(isAnimating)") }()
             if placedModels.contains("hoop_court") {
                 Button(action: {
-                    print("DEBUG: Play button pressed. Removing old player/ball entities if any.")
+                    print("DEBUG: Play button pressed.")
                     guard let arView = arViewInstance else {
                         print("DEBUG: Could not find CustomARView instance.")
                         return
                     }
-                    // Remove old player/ball entities
-                    let toRemove = arView.mainAnchor.children.filter { $0.name.starts(with: "player_") || $0.name.starts(with: "ball_") }
-                    for child in toRemove {
-                        arView.mainAnchor.removeChild(child)
-                        print("DEBUG: Removed entity from mainAnchor: \(child.name)")
-                    }
-                    // Recreate and add player/ball entities
-                    let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
-                    let arCourtWidth: Float = 0.15
-                    let arCourtHeight: Float = 0.15 * Float(courtSize.height / courtSize.width)
-                    arView.placePlayersAndBalls(for: play, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
-                    // Start animation
+                    // Entities should already be placed when the court was. Only start animation.
                     arView.startAnimation(with: play)
                 }) {
                     Image(systemName: "play.fill")
@@ -319,49 +331,11 @@ struct ARViewContainer: UIViewRepresentable {
                             customARView.toggleFocusEntity(isVisible: false)
                             customARView.removePreview()
 
-                            // --- Place players and ball on the court using play data (NO rotate180Y) ---
+                            // Call placePlayersAndBalls once to add all assets
                             let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
                             let arCourtWidth: Float = 0.15
                             let arCourtHeight: Float = 0.15 * Float(courtSize.height / courtSize.width)
-                            for player in play.players {
-                                let arPosition = map2DToAR(player.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
-                                let playerEntity: ModelEntity
-                                if let loaded = try? ModelEntity.loadModel(named: "cylinder") {
-                                    print("Loaded cylinder model for player \(player.number)")
-                                    playerEntity = loaded
-                                    playerEntity.scale = SIMD3<Float>(repeating: 0.0002)
-                                    playerEntity.model?.materials = [SimpleMaterial(color: .green, isMetallic: false)]
-                                } else {
-                                    print("Failed to load cylinder model for player \(player.number), using fallback sphere.")
-                                    playerEntity = ModelEntity(mesh: .generateSphere(radius: 0.008), materials: [SimpleMaterial(color: .green, isMetallic: false)])
-                                }
-                                playerEntity.position = arPosition
-                                playerEntity.name = "player_\(player.id)"
-                                let textMesh = MeshResource.generateText("\(player.number)", extrusionDepth: 0.02, font: .systemFont(ofSize: 0.1), containerFrame: .zero, alignment: .center, lineBreakMode: .byWordWrapping)
-                                let textMaterial = SimpleMaterial(color: .green, isMetallic: false)
-                                let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
-                                textEntity.position = SIMD3<Float>(0, 0.3, 0)
-                                playerEntity.addChild(textEntity)
-                                customARView.mainAnchor.addChild(playerEntity)
-                                entityMap[player.id] = playerEntity
-                            }
-                            for ball in play.basketballs {
-                                let ballARPosition = map2DToAR(ball.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
-                                let ballEntity: ModelEntity
-                                if let loaded = try? ModelEntity.loadModel(named: "ball") {
-                                    print("Loaded ball model")
-                                    ballEntity = loaded
-                                    ballEntity.scale = SIMD3<Float>(repeating: 0.00045)
-                                } else {
-                                    print("Failed to load ball model, using fallback orange sphere.")
-                                    ballEntity = ModelEntity(mesh: .generateSphere(radius: 0.015), materials: [SimpleMaterial(color: .orange, isMetallic: false)])
-                                }
-                                ballEntity.position = ballARPosition
-                                ballEntity.name = "ball_\(ball.id)"
-                                customARView.mainAnchor.addChild(ballEntity)
-                                entityMap[ball.id] = ballEntity
-                            }
-                            // --- End place players and ball ---
+                            customARView.placePlayersAndBalls(for: play, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
 
                             DispatchQueue.main.async {
                                 self.modelConfirmedForPlacement = nil
@@ -442,6 +416,8 @@ class CustomARView: ARView {
     var isAnimating: Bool = false
     // Store player/ball entities by UUID
     var entityMap: [UUID: ModelEntity] = [:]
+    var isCourtAdjustmentModeEnabled: Bool = false // Property to control adjustment mode
+    private var initialMainAnchorScale: SIMD3<Float>? // To store scale at gesture start
     
     // Dictionary to track placed chibi_kids by their model name
     var placedChibiKids: [String: ModelEntity] = [:]
@@ -501,23 +477,51 @@ class CustomARView: ARView {
         
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(recognizer:)))
         self.addGestureRecognizer(tapGesture)
+
+        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(recognizer:))) // Add pinch gesture
+        self.addGestureRecognizer(pinchGesture)
     }
     
     @objc func handlePan(recognizer: UIPanGestureRecognizer) {
         let location = recognizer.location(in: self)
-        guard let entityToDrag = self.lastPlacedEntity else { return }
         
+        guard let entityToDrag = isCourtAdjustmentModeEnabled ? self.mainAnchor : self.lastPlacedEntity else { 
+            print("DEBUG: No entity to drag (mainAnchor or lastPlacedEntity).")
+            return 
+        }
+        
+        // If adjusting court, ensure we're dealing with an AnchorEntity for mainAnchor
+        // or ModelEntity for lastPlacedEntity. MainAnchor is AnchorEntity.
+        var entityToModify: Entity = entityToDrag
+        if isCourtAdjustmentModeEnabled, let anchor = entityToDrag as? AnchorEntity {
+            // We are good, mainAnchor is an AnchorEntity
+        } else if !isCourtAdjustmentModeEnabled, let model = entityToDrag as? ModelEntity {
+            // We are good, lastPlacedEntity should be a ModelEntity
+        } else if isCourtAdjustmentModeEnabled { // entityToDrag is mainAnchor but not castable to AnchorEntity (should not happen)
+             print("DEBUG: mainAnchor is not an AnchorEntity, cannot drag.")
+             return
+        } else { // entityToDrag is lastPlacedEntity but not ModelEntity
+            print("DEBUG: lastPlacedEntity is not a ModelEntity, cannot drag.")
+            return
+        }
+
         switch recognizer.state {
         case .began:
-            self.initialDragYPosition = entityToDrag.position(relativeTo: nil).y
+            // For mainAnchor, initialDragYPosition might need to be relative to its current y.
+            // For ModelEntity, it's fine as is.
+            self.initialDragYPosition = entityToModify.position(relativeTo: nil).y
         case .changed:
             guard let initialY = self.initialDragYPosition else { return }
             let results = self.raycast(from: location, allowing: .existingPlaneGeometry, alignment: .any)
             if let firstResult = results.first {
                 let newX = firstResult.worldTransform.columns.3.x
                 let newZ = firstResult.worldTransform.columns.3.z
+                // If dragging mainAnchor, initialY is its own Y. If dragging model, initialY is model's Y.
                 let worldPosition = SIMD3<Float>(newX, initialY, newZ)
-                entityToDrag.setPosition(worldPosition, relativeTo: nil)
+                entityToModify.setPosition(worldPosition, relativeTo: nil)
+                if isCourtAdjustmentModeEnabled {
+                    print("DEBUG: Dragging mainAnchor to \(worldPosition)")
+                }
             }
         case .ended, .cancelled:
             self.initialDragYPosition = nil
@@ -534,6 +538,26 @@ class CustomARView: ARView {
                 self.lastPlacedEntity = entity
                 print("DEBUG: Selected chibi_kid for dragging: \(entity.name)")
             }
+        }
+    }
+
+    @objc func handlePinch(recognizer: UIPinchGestureRecognizer) { // Pinch gesture handler
+        guard isCourtAdjustmentModeEnabled else { return }
+
+        switch recognizer.state {
+        case .began:
+            // Store the initial scale of the mainAnchor when the gesture starts
+            initialMainAnchorScale = self.mainAnchor.scale
+        case .changed:
+            if let initialScale = initialMainAnchorScale {
+                let newScale = initialScale * Float(recognizer.scale)
+                self.mainAnchor.scale = newScale
+            }
+        case .ended, .cancelled:
+            // Reset initial scale for the next gesture
+            initialMainAnchorScale = nil
+        default:
+            break
         }
     }
     
@@ -651,12 +675,13 @@ class CustomARView: ARView {
             }
             playerEntity.position = arPosition
             playerEntity.name = "player_\(player.id)"
-            let textMesh = MeshResource.generateText("\(player.number)", extrusionDepth: 0.02, font: .systemFont(ofSize: 0.1), containerFrame: .zero, alignment: .center, lineBreakMode: .byWordWrapping)
-            let textMaterial = SimpleMaterial(color: .green, isMetallic: false)
-            let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
-            textEntity.position = SIMD3<Float>(0, 0.3, 0)
-            playerEntity.addChild(textEntity)
-            mainAnchor.addChild(playerEntity)
+            // Text label for player number (commented out for testing)
+            // let textMesh = MeshResource.generateText("\(player.number)", extrusionDepth: 0.02, font: .systemFont(ofSize: 0.1), containerFrame: .zero, alignment: .center, lineBreakMode: .byWordWrapping)
+            // let textMaterial = SimpleMaterial(color: .green, isMetallic: false)
+            // let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
+            // textEntity.position = SIMD3<Float>(0, 0.3, 0) 
+            // playerEntity.addChild(textEntity)
+            self.mainAnchor.addChild(playerEntity)
             entityMap[player.id] = playerEntity
             print("DEBUG: Added player entity for \(player.id) to entityMap.")
         }
@@ -674,17 +699,47 @@ class CustomARView: ARView {
             }
             ballEntity.position = ballARPosition
             ballEntity.name = "ball_\(ball.id)"
-            mainAnchor.addChild(ballEntity)
+            self.mainAnchor.addChild(ballEntity)
             entityMap[ball.id] = ballEntity
             print("DEBUG: Added ball entity for \(ball.id) to entityMap.")
+        }
+
+        // Opponents
+        for opponent in play.opponents { // Added loop for opponents
+            let arPosition = map2DToAR(opponent.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let opponentEntity: ModelEntity
+            if let loaded = try? ModelEntity.loadModel(named: "cylinder") {
+                print("DEBUG: Loaded cylinder model for opponent \(opponent.number)")
+                opponentEntity = loaded
+                opponentEntity.scale = SIMD3<Float>(repeating: 0.0002)
+                opponentEntity.model?.materials = [SimpleMaterial(color: .red, isMetallic: false)]
+            } else {
+                print("DEBUG: Failed to load cylinder model for opponent \(opponent.number), using fallback sphere.")
+                opponentEntity = ModelEntity(mesh: .generateSphere(radius: 0.008), materials: [SimpleMaterial(color: .red, isMetallic: false)])
+            }
+            opponentEntity.position = arPosition
+            opponentEntity.name = "opponent_\(opponent.id)" // Naming convention for opponents
+            self.mainAnchor.addChild(opponentEntity)
+            entityMap[opponent.id] = opponentEntity
+            print("DEBUG: Added opponent entity for \(opponent.id) to entityMap.")
         }
     }
     
     // New: Start animation for play
     func startAnimation(with play: Models.SavedPlay) {
-        print("DEBUG: startAnimation called in ARView. Clearing previous animationData.")
+        print("DEBUG: CustomARView.startAnimation called. Clearing previous animationData.")
         animationData.removeAll()
-        isAnimating = false
+        isAnimating = false // Reset animation state before starting new one
+
+        print("DEBUG: Current entityMap count: \(entityMap.count)")
+        for (id, entity) in entityMap {
+            print("DEBUG: entityMap entry: ID \(id), Entity Name: \(entity.name)")
+        }
+        print("DEBUG: mainAnchor children count: \(self.mainAnchor.children.count)")
+        for child in self.mainAnchor.children {
+            print("DEBUG: mainAnchor child: Name \(child.name), ID \(child.id)")
+        }
+
         let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
         let arCourtWidth: Float = 0.15
         let arCourtHeight: Float = 0.15 * Float(courtSize.height / courtSize.width)
@@ -904,16 +959,14 @@ struct PlacementButtonsView: View {
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView(play: Models.SavedPlay(
-            firestoreID: nil,
-            id: UUID(),
-            userID: nil,
             name: "Preview Play",
             dateCreated: Date(),
             lastModified: Date(),
             courtType: "full",
             drawings: [],
             players: [],
-            basketballs: []
+            basketballs: [],
+            opponents: []
         ))
     }
 }
@@ -949,7 +1002,7 @@ func map2DToAR(_ point: CGPoint, courtSize: CGSize, arCourtWidth: Float, arCourt
     let zNorm = Float(point.y / courtSize.height)
     let x = (xNorm - 0.5) * arCourtWidth - 0.19
     let z = (zNorm - 0.5) * arCourtHeight + 0.04
-    return SIMD3<Float>(x, 0.05, z)
+    return SIMD3<Float>(x, 0.1, z)
 }
 
 // Add exit button support

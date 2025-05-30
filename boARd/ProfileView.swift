@@ -145,6 +145,10 @@ struct ProfileView: View {
         guard let user = authViewModel.user else { return }
         isSaving = true
         errorMessage = nil
+        
+        // Stash the teamID entered by the user before it's potentially overwritten by loadProfile after save
+        let enteredTeamID = self.teamID.trimmingCharacters(in: .whitespacesAndNewlines)
+
         let profile: [String: Any] = [
             "name": name,
             "position": selectedPosition,
@@ -155,11 +159,39 @@ struct ProfileView: View {
         ]
         authViewModel.saveUserProfile(userId: user.uid, profile: profile) { error in
             DispatchQueue.main.async {
-                isSaving = false
+                self.isSaving = false // Set isSaving to false regardless of outcome for this part
                 if let error = error {
-                    errorMessage = error.localizedDescription
+                    self.errorMessage = "Error saving profile: \(error.localizedDescription)"
                 } else {
-                    showEditSheet = false
+                    // Profile saved, now attempt to join team if teamID was entered
+                    if !enteredTeamID.isEmpty {
+                        self.isSaving = true // Set isSaving to true for the join team operation
+                        UserService.shared.joinTeam(teamID: enteredTeamID) { joinError in
+                            DispatchQueue.main.async {
+                                self.isSaving = false // Set isSaving to false after join attempt
+                                if let joinError = joinError {
+                                    self.errorMessage = "Profile saved, but failed to join team: \(joinError.localizedDescription)"
+                                } else {
+                                    self.errorMessage = nil // Clear previous errors
+                                    // Successfully saved profile and joined/updated team
+                                    print("Successfully saved profile and joined/updated team: \(enteredTeamID)")
+                                    // Update local teamID state to reflect what was processed
+                                    self.teamID = enteredTeamID 
+                                    self.showEditSheet = false // Dismiss sheet on full success
+                                }
+                            }
+                        }
+                    } else {
+                        // No team ID entered, or it was cleared.
+                        // If user was previously in a team and now entered an empty teamID,
+                        // you might want to call a leaveTeam function here.
+                        // For now, just consider profile saved without team action.
+                        print("Profile saved. No team ID provided or team ID was cleared.")
+                        // We might want to explicitly clear the teamID in Firestore via UserService if it's now empty.
+                        // Example: UserService.shared.updateUserTeamAssociation(teamID: nil) {}
+                        self.errorMessage = nil
+                        self.showEditSheet = false // Dismiss sheet as profile save was successful
+                    }
                 }
             }
         }

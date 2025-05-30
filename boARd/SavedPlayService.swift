@@ -16,16 +16,16 @@ public class SavedPlayService {
     
     private init() {}
     
-    func savePlay(_ play: Models.SavedPlay, forUserID userID: String, completion: @escaping (Error?) -> Void) {
+    func savePlay(_ play: Models.SavedPlay, forUserID userID: String, teamID: String? = nil, completion: @escaping (Error?) -> Void) {
         var mutablePlay = play
-        mutablePlay.userID = userID 
+        mutablePlay.userID = userID
+        mutablePlay.teamID = teamID
         
-        let documentID = mutablePlay.id.uuidString // Use the local UUID as the Firestore document ID
-        mutablePlay.firestoreID = documentID // Manually setting firestoreID
+        let documentID = mutablePlay.id.uuidString
+        mutablePlay.firestoreID = documentID
 
         do {
-            // Convert to dictionary manually instead of using setData(from:)
-            let playData: [String: Any] = [
+            var playData: [String: Any] = [
                 "id": mutablePlay.id.uuidString,
                 "userID": userID,
                 "name": mutablePlay.name,
@@ -34,8 +34,13 @@ public class SavedPlayService {
                 "courtType": mutablePlay.courtType,
                 "drawings": mutablePlay.drawings.map { self.convertDrawingDataToDictionary($0) },
                 "players": mutablePlay.players.map { self.convertPlayerDataToDictionary($0) },
-                "basketballs": mutablePlay.basketballs.map { self.convertBasketballDataToDictionary($0) }
+                "basketballs": mutablePlay.basketballs.map { self.convertBasketballDataToDictionary($0) },
+                "opponents": mutablePlay.opponents.map { self.convertOpponentDataToDictionary($0) }
             ]
+            
+            if let teamID = teamID {
+                playData["teamID"] = teamID
+            }
             
             playsCollection.document(documentID).setData(playData) { error in
                 completion(error)
@@ -86,30 +91,36 @@ public class SavedPlayService {
             return nil
         }
         
+        let teamID = data["teamID"] as? String
+        
         // Convert timestamps to Date
         let dateCreated = dateCreatedTimestamp.dateValue()
         let lastModified = lastModifiedTimestamp.dateValue()
         
-        // Parse drawings, players, basketballs
+        // Parse drawings, players, basketballs, opponents
         let drawingsData = data["drawings"] as? [[String: Any]] ?? []
         let playersData = data["players"] as? [[String: Any]] ?? []
         let basketballsData = data["basketballs"] as? [[String: Any]] ?? []
+        let opponentsData = data["opponents"] as? [[String: Any]] ?? []
         
         let drawings = drawingsData.compactMap { self.convertDictionaryToDrawingData($0) }
         let players = playersData.compactMap { self.convertDictionaryToPlayerData($0) }
         let basketballs = basketballsData.compactMap { self.convertDictionaryToBasketballData($0) }
+        let opponents = opponentsData.compactMap { self.convertDictionaryToOpponentData($0) }
         
         return Models.SavedPlay(
             firestoreID: document.documentID,
             id: id,
             userID: data["userID"] as? String,
+            teamID: teamID,
             name: name,
             dateCreated: dateCreated,
             lastModified: lastModified,
             courtType: courtType,
             drawings: drawings,
             players: players,
-            basketballs: basketballs
+            basketballs: basketballs,
+            opponents: opponents
         )
     }
     
@@ -144,6 +155,15 @@ public class SavedPlayService {
             "position": ["x": basketball.position.x, "y": basketball.position.y],
             "normalizedPosition": basketball.normalizedPosition.map { ["x": $0.x, "y": $0.y] } as Any,
             "assignedPathId": basketball.assignedPathId?.uuidString as Any
+        ]
+    }
+    
+    private func convertOpponentDataToDictionary(_ opponent: Models.OpponentData) -> [String: Any] {
+        return [
+            "id": opponent.id.uuidString,
+            "position": ["x": opponent.position.x, "y": opponent.position.y],
+            "number": opponent.number,
+            "normalizedPosition": opponent.normalizedPosition.map { ["x": $0.x, "y": $0.y] } as Any
         ]
     }
     
@@ -256,6 +276,33 @@ public class SavedPlayService {
         )
     }
     
+    private func convertDictionaryToOpponentData(_ dict: [String: Any]) -> Models.OpponentData? {
+        guard let idString = dict["id"] as? String,
+              let id = UUID(uuidString: idString),
+              let positionDict = dict["position"] as? [String: Any],
+              let x = positionDict["x"] as? CGFloat,
+              let y = positionDict["y"] as? CGFloat,
+              let number = dict["number"] as? Int else {
+            return nil
+        }
+        
+        let position = Models.PointData(x: x, y: y)
+        
+        var normalizedPosition: Models.PointData? = nil
+        if let normalizedPositionDict = dict["normalizedPosition"] as? [String: Any],
+           let nx = normalizedPositionDict["x"] as? CGFloat,
+           let ny = normalizedPositionDict["y"] as? CGFloat {
+            normalizedPosition = Models.PointData(x: nx, y: ny)
+        }
+        
+        return Models.OpponentData(
+            id: id,
+            position: position,
+            number: number,
+            normalizedPosition: normalizedPosition
+        )
+    }
+    
     func deletePlay(playID: String, completion: @escaping (Error?) -> Void) {
         playsCollection.document(playID).delete {
             error in
@@ -342,6 +389,24 @@ public class SavedPlayService {
         )
     }
     
+    static func convertToOpponentData(opponent: OpponentCircle) -> Models.OpponentData {
+        return Models.OpponentData(
+            id: opponent.id,
+            position: Models.PointData.from(cgPoint: opponent.position),
+            number: opponent.number,
+            normalizedPosition: opponent.normalizedPosition.map { Models.PointData.from(cgPoint: $0) }
+        )
+    }
+    
+    static func convertToOpponent(opponentData: Models.OpponentData) -> OpponentCircle {
+        return OpponentCircle(
+            id: opponentData.id,
+            position: opponentData.position.cgPoint,
+            number: opponentData.number,
+            normalizedPosition: opponentData.normalizedPosition?.cgPoint
+        )
+    }
+    
     // MARK: - Convenience methods for backward compatibility
     
     // These methods help existing code work without changes
@@ -421,5 +486,28 @@ public class SavedPlayService {
                 completion?(error)
             }
         }
+    }
+
+    // New function to fetch plays for a team
+    func fetchPlaysForTeam(teamID: String, completion: @escaping (Result<[Models.SavedPlay], Error>) -> Void) {
+        playsCollection.whereField("teamID", isEqualTo: teamID)
+            .order(by: "lastModified", descending: true)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    completion(.success([]))
+                    return
+                }
+                
+                let plays = documents.compactMap { document -> Models.SavedPlay? in
+                    // Use the existing conversion helper
+                    return self.convertDocumentToSavedPlay(document)
+                }
+                completion(.success(plays))
+            }
     }
 } 

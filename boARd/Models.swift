@@ -19,6 +19,7 @@ enum DrawingTool: String, CaseIterable {
     case move
     case addPlayer
     case addBasketball
+    case addOpponent
 
     var iconName: String {
         switch self {
@@ -27,6 +28,7 @@ enum DrawingTool: String, CaseIterable {
         case .move: return "hand.point.up.left.fill"
         case .addPlayer: return "person.fill.badge.plus"
         case .addBasketball: return "basketball.fill"
+        case .addOpponent: return "person.crop.circle.badge.xmark"
         }
     }
 }
@@ -182,6 +184,7 @@ struct Models {
         public var firestoreID: String?
         public var id = UUID()
         public var userID: String?
+        public var teamID: String?
         public var name: String
         public var dateCreated: Date
         public var lastModified: Date
@@ -190,6 +193,7 @@ struct Models {
         public var drawings: [DrawingData]
         public var players: [PlayerData]
         public var basketballs: [BasketballData]
+        public var opponents: [OpponentData]
 
         public var courtTypeEnum: CourtType {
             return courtType == "full" ? .full : .half
@@ -221,6 +225,13 @@ struct Models {
         public var position: PointData
         public var normalizedPosition: PointData?
         public var assignedPathId: UUID?
+    }
+
+    struct OpponentData: Codable, Identifiable {
+        public var id: UUID
+        public var position: PointData
+        public var number: Int
+        public var normalizedPosition: PointData?
     }
 
     struct PointData: Codable {

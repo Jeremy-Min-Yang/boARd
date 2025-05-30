@@ -69,7 +69,7 @@ struct OnboardingView: View {
                         .padding(.horizontal)
                 }
             }
-            .disabled(name.isEmpty || teamID.isEmpty)
+            .disabled(name.isEmpty)
             Spacer()
         }
         .padding()
@@ -79,27 +79,54 @@ struct OnboardingView: View {
         guard let user = authViewModel.user else { return }
         isSaving = true
         errorMessage = nil
+        
+        let enteredTeamID = self.teamID.trimmingCharacters(in: .whitespacesAndNewlines)
+
         let profile: [String: Any] = [
             "name": name,
             "position": selectedPosition,
             "sport": selectedSport,
-            "teamID": teamID,
+            "teamID": enteredTeamID,
             "email": user.email ?? "",
             "uid": user.uid
         ]
+        
         authViewModel.saveUserProfile(userId: user.uid, profile: profile) { error in
             DispatchQueue.main.async {
-                isSaving = false
                 if let error = error {
-                    errorMessage = error.localizedDescription
+                    self.isSaving = false
+                    self.errorMessage = "Error saving profile: \(error.localizedDescription)"
                 } else {
-                    authViewModel.hasCompletedOnboarding = true
-                    authViewModel.justSignedUp = false
-                    if let user = authViewModel.user {
-                        authViewModel.setOnboardingCompleted(for: user.uid)
+                    if !enteredTeamID.isEmpty {
+                        self.isSaving = true
+                        UserService.shared.joinTeam(teamID: enteredTeamID) { joinError in
+                            DispatchQueue.main.async {
+                                self.isSaving = false
+                                if let joinError = joinError {
+                                    self.errorMessage = "Profile saved, but failed to join team: \(joinError.localizedDescription). You can try joining from your Profile."
+                                    self.completeOnboardingProcess()
+                                } else {
+                                    self.errorMessage = nil
+                                    print("Successfully saved profile and joined team: \(enteredTeamID)")
+                                    self.completeOnboardingProcess()
+                                }
+                            }
+                        }
+                    } else {
+                        self.isSaving = false
+                        print("Profile saved. No team ID provided for onboarding.")
+                        self.completeOnboardingProcess()
                     }
                 }
             }
+        }
+    }
+    
+    private func completeOnboardingProcess() {
+        authViewModel.hasCompletedOnboarding = true
+        authViewModel.justSignedUp = false
+        if let user = authViewModel.user {
+            authViewModel.setOnboardingCompleted(for: user.uid)
         }
     }
 }

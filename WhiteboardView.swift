@@ -154,10 +154,12 @@ struct WhiteboardView: View {
     @State private var currentDrawing: Drawing?
     @State private var players: [PlayerCircle] = []
     @State private var basketballs: [BasketballItem] = []
+    @State private var opponents: [OpponentCircle] = []
     @State private var draggedPlayerIndex: Int?
     @State private var draggedBasketballIndex: Int?
     @State private var isAddingPlayer = false
     @State private var isAddingBasketball = false
+    @State private var isAddingOpponent = false
     @State private var currentTouchType: TouchInputType = .unknown
     @State private var showPencilIndicator: Bool = false
     @State private var lastTouchLocation: CGPoint = .zero
@@ -222,6 +224,11 @@ struct WhiteboardView: View {
                             isAddingBasketball = true
                             isAddingPlayer = false
                         },
+                        onAddOpponent: {
+                            isAddingOpponent = true
+                            isAddingPlayer = false
+                            isAddingBasketball = false
+                        },
                         onUndo: {
                             if let lastAction = actions.popLast() {
                                 switch lastAction {
@@ -236,6 +243,10 @@ struct WhiteboardView: View {
                                 case .player:
                                     if !players.isEmpty {
                                         players.removeLast()
+                                    }
+                                case .opponent:
+                                    if !opponents.isEmpty {
+                                        opponents.removeLast()
                                     }
                                 }
                             }
@@ -369,6 +380,7 @@ struct WhiteboardView: View {
         let drawingsData = drawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
         let playersData = players.map { SavedPlayService.convertToPlayerData(player: $0) }
         let basketballsData = basketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
+        let opponentsData = opponents.map { SavedPlayService.convertToOpponentData(opponent: $0) }
         
         // Create the saved play model
         let play = SavedPlay(
@@ -379,7 +391,8 @@ struct WhiteboardView: View {
             courtType: courtType == .full ? "full" : "half",
             drawings: drawingsData,
             players: playersData,
-            basketballs: basketballsData
+            basketballs: basketballsData,
+            opponents: opponentsData
         )
         
         // Save the play
@@ -414,6 +427,7 @@ struct WhiteboardView: View {
         drawings.removeAll()
         players.removeAll()
         basketballs.removeAll()
+        opponents.removeAll()
         actions.removeAll()
         
         // Set editingPlayId
@@ -428,6 +442,11 @@ struct WhiteboardView: View {
         // Load basketballs
         play.basketballs.forEach { basketballData in
             basketballs.append(SavedPlayService.convertToBasketball(basketballData: basketballData))
+        }
+        
+        // Load opponents
+        play.opponents.forEach { opponentData in
+            opponents.append(SavedPlayService.convertToOpponent(opponentData: opponentData))
         }
         
         // Load drawings (after players, so path assignments can be linked)
@@ -594,6 +613,7 @@ struct ToolbarView: View {
     let pathCount: Int
     var onAddPlayer: () -> Void
     var onAddBasketball: () -> Void
+    var onAddOpponent: () -> Void
     var onUndo: () -> Void
     var onClear: () -> Void
     var onPlayAnimation: () -> Void
@@ -661,6 +681,14 @@ struct ToolbarView: View {
                         Image(systemName: "basketball.fill")
                             .font(.title3)
                             .foregroundColor(.orange)
+                            .frame(width: 36, height: 36)
+                    }
+                    
+                    // Add opponent button
+                    Button(action: onAddOpponent) {
+                        Image(systemName: DrawingTool.addOpponent.iconName)
+                            .font(.title3)
+                            .foregroundColor(.red)
                             .frame(width: 36, height: 36)
                     }
                     

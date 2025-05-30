@@ -1,6 +1,8 @@
 import SwiftUI
 import PDFKit
 import UIKit
+import Firebase
+import FirebaseAuth
 
 
 // Now modify the main WhiteboardView to use these components
@@ -604,7 +606,7 @@ struct WhiteboardView: View {
             .frame(width: drawingWidth, height: drawingHeight)
             .offset(x: drawingOffsetX, y: drawingOffsetY)
             // --- End Indicator and DrawingLayer ---
-        }
+        }   
     }
     
     // Add a helper method to exit path assignment mode
@@ -1607,6 +1609,7 @@ struct WhiteboardView: View {
         self.drawings = play.drawings.map { SavedPlayService.convertToDrawing(drawingData: $0) }
         self.players = play.players.map { SavedPlayService.convertToPlayer(playerData: $0) }
         self.basketballs = play.basketballs.map { SavedPlayService.convertToBasketball(basketballData: $0) }
+        self.opponents = play.opponents.map { SavedPlayService.convertToOpponent(opponentData: $0) } // Added opponent loading
         
         // Set play name if needed (you might want to add a @State var for this)
         // self.playName = play.name
@@ -1637,6 +1640,7 @@ struct WhiteboardView: View {
         let currentDrawings = self.drawings
         let currentPlayers = self.players
         let currentBasketballs = self.basketballs
+        let currentOpponents = self.opponents // Gather opponents
         let name = self.playNameInput.trimmingCharacters(in: .whitespacesAndNewlines) // Trim whitespace
         let courtTypeString = self.courtType == .full ? "full" : "half"
 
@@ -1651,34 +1655,53 @@ struct WhiteboardView: View {
         let drawingData = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
         let playerData = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
         let basketballData = currentBasketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
+        let opponentData = currentOpponents.map { SavedPlayService.convertToOpponentData(opponent: $0) } // Convert opponents
 
         // 3. Create SavedPlay Object
         // Use the existing play's ID and dateCreated if editing, otherwise generate new
         let newPlay = Models.SavedPlay(
+            firestoreID: playToLoad?.firestoreID, // Preserve Firestore ID if editing
             id: playToLoad?.id ?? UUID(),
+            // teamID will be set by the service or passed in
             name: name,
             dateCreated: playToLoad?.dateCreated ?? Date(),
             lastModified: Date(),
             courtType: courtTypeString,
             drawings: drawingData,
             players: playerData,
-            basketballs: basketballData
+            basketballs: basketballData,
+            opponents: opponentData // Use actual opponent data
         )
 
         // Print success message *before* attempting to persist
         print("Preparing to save Play '\(name)' with ID: \(newPlay.id)")
 
         // 4. Persist
-        SavedPlayService.shared.savePlay(newPlay)
-        // print("Play '\(name)' saved successfully with ID: \(newPlay.id)") // Moved this line up
-
-        // 5. Cleanup
-        playNameInput = "" // Clear the input field
-        showingSaveAlert = false // Dismiss the alert implicitly by state change
-        isDirty = false
-        deleteDraft()
-
-        // Optional: Add user feedback (e.g., a temporary banner)
+        guard let userID = Auth.auth().currentUser?.uid else {
+            print("Error: User not logged in. Cannot save play.")
+            saveErrorMessage = "You must be logged in to save plays."
+            showSaveErrorAlert = true
+            return
+        }
+        
+        let teamID = UserService.shared.getCurrentUserTeamID()
+        
+        SavedPlayService.shared.savePlay(newPlay, forUserID: userID, teamID: teamID) { [self] error in
+            if let error = error {
+                print("Error saving play: \(error.localizedDescription)")
+                self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
+                self.showSaveErrorAlert = true
+            } else {
+                print("Play '\(name)' saved successfully with ID: \(newPlay.id), TeamID: \(teamID ?? "None")")
+                self.playNameInput = "" // Clear input field
+                self.showingSaveAlert = false // Dismiss sheet
+                self.isDirty = false // Mark as not dirty
+                self.deleteDraft() // Clear any auto-saved draft for this play
+                // If this was editing an existing play, playToLoad should be updated or reloaded
+                // If it was a new play, we might want to set playToLoad to this newPlay
+                // For simplicity, we can rely on a list refresh or similar mechanism for now.
+            }
+        }
     }
 
     // Add the completion handler function
@@ -1895,26 +1918,51 @@ struct WhiteboardView: View {
         let currentDrawings = self.drawings
         let currentPlayers = self.players
         let currentBasketballs = self.basketballs
+        let currentOpponents = self.opponents // Gather opponents
         let name = self.playNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
         let courtTypeString = self.courtType == .full ? "full" : "half"
         guard !name.isEmpty else { return }
         let drawingData = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
         let playerData = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
         let basketballData = currentBasketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
+        let opponentData = currentOpponents.map { SavedPlayService.convertToOpponentData(opponent: $0) } // Convert opponents
         let newPlay = Models.SavedPlay(
             id: UUID(), // Always new UUID
+            // teamID will be set by the service or passed in
             name: name,
             dateCreated: Date(),
             lastModified: Date(),
             courtType: courtTypeString,
             drawings: drawingData,
             players: playerData,
-            basketballs: basketballData
+            basketballs: basketballData,
+            opponents: opponentData // Use actual opponent data
         )
-        SavedPlayService.shared.savePlay(newPlay)
-        playNameInput = ""
-        showingSaveAsAlert = false
-        isDirty = false
+        
+        guard let userID = Auth.auth().currentUser?.uid else {
+            print("Error: User not logged in. Cannot save play.")
+            saveErrorMessage = "You must be logged in to save plays."
+            showSaveErrorAlert = true
+            return
+        }
+        
+        let teamID = UserService.shared.getCurrentUserTeamID()
+        
+        SavedPlayService.shared.savePlay(newPlay, forUserID: userID, teamID: teamID) { [self] error in
+            if let error = error {
+                print("Error saving new play: \(error.localizedDescription)")
+                self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
+                self.showSaveErrorAlert = true
+            } else {
+                print("Play '\(name)' saved successfully as new play with ID: \(newPlay.id), TeamID: \(teamID ?? "None")")
+                self.playNameInput = "" // Clear input
+                self.showingSaveAsAlert = false // Dismiss sheet
+                self.isDirty = false // Mark as not dirty
+                // Potentially update playToLoad to this new play if the user continues editing
+                // self.playToLoad = newPlay 
+                self.deleteDraft() // Clear any auto-saved draft for a new play
+            }
+        }
     }
 
     // Add new function for immediate save
@@ -1922,26 +1970,48 @@ struct WhiteboardView: View {
         let currentDrawings = self.drawings
         let currentPlayers = self.players
         let currentBasketballs = self.basketballs
+        let currentOpponents = self.opponents // Gather opponents
         let name: String = playToLoad?.name ?? playNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
         let courtTypeString = self.courtType == .full ? "full" : "half"
         guard !name.isEmpty else { return }
         let drawingData = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
         let playerData = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
         let basketballData = currentBasketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
+        let opponentData = currentOpponents.map { SavedPlayService.convertToOpponentData(opponent: $0) } // Convert opponents
         let newPlay = Models.SavedPlay(
+            firestoreID: playToLoad?.firestoreID,
             id: playToLoad?.id ?? UUID(),
+            // teamID will be set by the service or passed in
             name: name,
             dateCreated: playToLoad?.dateCreated ?? Date(),
             lastModified: Date(),
             courtType: courtTypeString,
             drawings: drawingData,
             players: playerData,
-            basketballs: basketballData
+            basketballs: basketballData,
+            opponents: opponentData // Use actual opponent data
         )
-        SavedPlayService.shared.savePlay(newPlay)
-        isDirty = false
-        deleteDraft()
-        onSuccess?()
+        
+        guard let userID = Auth.auth().currentUser?.uid else {
+            print("Error: User not logged in. Cannot save play immediately.")
+            // Handle not being logged in - perhaps show an alert or prevent action
+            return
+        }
+        let teamID = UserService.shared.getCurrentUserTeamID()
+
+        SavedPlayService.shared.savePlay(newPlay, forUserID: userID, teamID: teamID) { [self] error in
+             if let error = error {
+                print("Error saving play immediately: \(error.localizedDescription)")
+                // Update UI to show error if necessary
+                self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
+                self.showSaveErrorAlert = true
+            } else {
+                print("Play '\(name)' saved immediately. ID: \(newPlay.id), TeamID: \(teamID ?? "None")")
+                self.isDirty = false
+                self.deleteDraft()
+                onSuccess?()
+            }
+        }
     }
 
     // --- Auto-Save/Drafts ---
@@ -1950,10 +2020,12 @@ struct WhiteboardView: View {
         let drawingData = self.drawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
         let playerData = self.players.map { SavedPlayService.convertToPlayerData(player: $0) }
         let basketballData = self.basketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
+        let opponentData = self.opponents.map { SavedPlayService.convertToOpponentData(opponent: $0) } // Added opponents
         let draft = DraftPlay(
             drawings: drawingData,
             players: playerData,
             basketballs: basketballData,
+            opponents: opponentData, // Added opponents
             name: playToLoad?.name ?? playNameInput,
             courtType: self.courtType == .full ? "full" : "half"
         )
@@ -1982,6 +2054,7 @@ struct WhiteboardView: View {
         var drawings: [Models.DrawingData]
         var players: [Models.PlayerData]
         var basketballs: [Models.BasketballData]
+        var opponents: [Models.OpponentData] // Added opponents
         var name: String
         var courtType: String // "full" or "half"
     }
@@ -1990,6 +2063,7 @@ struct WhiteboardView: View {
         self.drawings = draft.drawings.map { SavedPlayService.convertToDrawing(drawingData: $0) }
         self.players = draft.players.map { SavedPlayService.convertToPlayer(playerData: $0) }
         self.basketballs = draft.basketballs.map { SavedPlayService.convertToBasketball(basketballData: $0) }
+        self.opponents = draft.opponents.map { SavedPlayService.convertToOpponent(opponentData: $0) } // Added opponents
         self.playNameInput = draft.name
         // courtType is fixed for this view
         isDirty = true

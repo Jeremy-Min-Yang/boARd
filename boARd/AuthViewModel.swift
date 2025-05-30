@@ -15,6 +15,11 @@ class AuthViewModel: ObservableObject {
     init() {
         handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             self?.user = user
+            if let user = user {
+                // User is signed in or was already signed in
+                print("Auth state changed, user: \(user.uid). Fetching team ID.")
+                UserService.shared.fetchAndUpdateUserTeamIDFromFirestore()
+            }
         }
     }
     
@@ -62,6 +67,9 @@ class AuthViewModel: ObservableObject {
                     self?.justSignedUp = false
                     self?.checkUserProfile(userId: user.uid) { hasProfile in
                         self?.hasCompletedOnboarding = self?.getOnboardingCompleted(for: user.uid) ?? hasProfile
+                        // Fetch team ID after successful sign-in and profile check
+                        print("User signed in: \(user.uid). Fetching team ID post profile check.")
+                        UserService.shared.fetchAndUpdateUserTeamIDFromFirestore()
                     }
                 }
             }
@@ -89,8 +97,13 @@ class AuthViewModel: ObservableObject {
                 } else if let user = result?.user {
                     self?.user = user
                     self?.justSignedUp = true
-                    self?.checkUserProfile(userId: user.uid) { hasProfile in
+                    // For a new sign-up, teamID would be set during onboarding if provided.
+                    // Fetching here ensures if onboarding is somehow skipped or if teamID is set by another means,
+                    // UserDefaults gets updated.
+                    self?.checkUserProfile(userId: user.uid) { hasProfile in // checkUserProfile might be too early for a brand new user before onboarding
                         self?.hasCompletedOnboarding = self?.getOnboardingCompleted(for: user.uid) ?? hasProfile
+                        print("User signed up: \(user.uid). Fetching team ID post profile check (or pre-onboarding).")
+                        UserService.shared.fetchAndUpdateUserTeamIDFromFirestore()
                     }
                 }
             }
