@@ -64,61 +64,12 @@ struct boARdApp: App {
             }
             .fullScreenCover(isPresented: $showARSheet) {
                 // Content for the sheet
-                if let currentPlay = arPlay {
-                    ZStack(alignment: .bottom) {
-                        ARPlayView(play: currentPlay, shouldStartAnimationBinding: $triggerARAnimation)
-                            .edgesIgnoringSafeArea(.all)
-                            .onAppear {
-                                print("[DEBUG] ARPlayView .onAppear triggered (App level) for play: \(currentPlay.name)")
-                                triggerARAnimation = false
-                            }
-                        
-                        // Play Button
-                        Button(action: {
-                            print("[boARdApp] Play button tapped. Setting triggerARAnimation to true.")
-                            triggerARAnimation = true
-                        }) {
-                            Image(systemName: "play.circle.fill")
-                                .font(.system(size: 50))
-                                .foregroundColor(.white)
-                                .padding()
-                                .background(Color.black.opacity(0.5))
-                                .clipShape(Circle())
-                        }
-                        .padding(.bottom, 30)
-
-                        // Close Button (Top Right)
-                        VStack {
-                            HStack {
-                                Spacer()
-                                Button(action: {
-                                    print("[boARdApp] Close AR View button tapped.")
-                                    showARSheet = false
-                                }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 30))
-                                        .foregroundColor(.white)
-                                        .padding()
-                                        .background(Color.black.opacity(0.5))
-                                        .clipShape(Circle())
-                                }
-                                .padding([.top, .trailing], 20)
-                            }
-                            Spacer()
-                        }
-                        .edgesIgnoringSafeArea(.all) // Allow button to be in safe area
-
-                    }
+                if let play = arPlay {
+                    ARContentViewWrapper(play: play)
                 } else {
                     VStack {
-                        Text("AR Play data is not available.")
-                            .onAppear {
-                                print("[boARdApp] fullScreenCover: arPlay was nil when attempting to show AR content.")
-                            }
-                        Button("Dismiss") {
-                            showARSheet = false
-                        }
-                        .padding()
+                        Text("No play selected for AR view.")
+                        Button("Dismiss") { showARSheet = false }
                     }
                 }
             }
