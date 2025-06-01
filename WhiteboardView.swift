@@ -354,16 +354,25 @@ struct WhiteboardView: View {
                         .disableAutocorrection(true)
                 }
                 
-                Section {
+                Section(header: Text("Save Options")) {
                     Button(action: savePlay) {
                         HStack {
                             Spacer()
-                            Text(editingPlayId == nil ? "Save Play" : "Update Play")
+                            Text(editingPlayId == nil ? "Save Play to Cloud" : "Update Play in Cloud")
                                 .fontWeight(.bold)
                             Spacer()
                         }
                     }
                     .disabled(playName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    
+                    Button(action: exportAsPDF) {
+                        HStack {
+                            Spacer()
+                            Text("Export as PDF")
+                                .fontWeight(.bold)
+                            Spacer()
+                        }
+                    }
                 }
             }
             .navigationTitle(editingPlayId == nil ? "Save Play" : "Update Play")
@@ -398,27 +407,120 @@ struct WhiteboardView: View {
         // Save the play
         SavedPlayService.shared.savePlay(play)
         
-        // Close the dialog and show success message
+        // Show success toast
+        showSaveSuccessToast = true
         showSaveDialog = false
         playName = ""
+        editingPlayId = nil
+    }
+    
+    // New Export as PDF Function
+    private func exportAsPDF() {
+        // Create a PDF document
+        let pdfDocument = PDFDocument()
         
-        // Show success toast
-        withAnimation {
-            showSaveSuccessToast = true
-        }
+        // Set up page dimensions (based on standard letter size or court proportions)
+        let pageBounds = CGRect(x: 0, y: 0, width: 612, height: 792) // Standard US Letter size
+        let pdfPage = PDFPage()
+        pdfDocument.insert(pdfPage, at: 0)
         
-        // Auto-dismiss the toast after 2 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            withAnimation {
-                showSaveSuccessToast = false
+        // Set up PDF metadata (optional)
+        pdfDocument.documentAttributes = [
+            PDFDocumentAttribute.titleAttribute: playName.isEmpty ? "Untitled Play" : playName,
+            PDFDocumentAttribute.creationDateAttribute: Date(),
+            PDFDocumentAttribute.modificationDateAttribute: Date()
+        ]
+        
+        // Begin PDF context for drawing
+        guard let page = pdfDocument.page(at: 0),
+              let context = UIGraphicsGetCurrentContext() else {
+            // Fallback if context creation fails
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(playName.isEmpty ? "UntitledPlay" : playName).pdf")
+            pdfDocument.write(to: tempURL)
+            let activityViewController = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
+            if let windowScene = UIApplication.shared.windows.first?.windowScene,
+               let rootViewController = windowScene.windows.first?.rootViewController {
+                activityViewController.popoverPresentationController?.sourceView = rootViewController.view
+                rootViewController.present(activityViewController, animated: true, completion: nil)
             }
-            
-            // Optionally navigate back to home screen after saving
-            // Uncomment if you want this behavior:
-            // DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            //     presentationMode.wrappedValue.dismiss()
-            // }
+            showSaveDialog = false
+            playName = ""
+            return
         }
+        
+        // Start a new graphics context for PDF rendering
+        UIGraphicsBeginPDFContextToFile(FileManager.default.temporaryDirectory.appendingPathComponent("temp.pdf").path, pageBounds, nil)
+        UIGraphicsBeginPDFPageWithInfo(pageBounds, nil)
+        
+        // Scale context to match court dimensions (simplified, adjust based on actual court size)
+        let courtWidth: CGFloat = courtType == .full ? 500 : 250
+        let courtHeight: CGFloat = courtType == .full ? 300 : 300
+        let scaleX = pageBounds.width / courtWidth
+        let scaleY = pageBounds.height / courtHeight
+        let scale = min(scaleX, scaleY)
+        context.scaleBy(x: scale, y: scale)
+        context.translateBy(x: (pageBounds.width / scale - courtWidth) / 2, y: (pageBounds.height / scale - courtHeight) / 2)
+        
+        // Draw court background (placeholder - implement actual court drawing)
+        let courtRect = CGRect(x: 0, y: 0, width: courtWidth, height: courtHeight)
+        UIColor.lightGray.setFill()
+        UIRectFill(courtRect)
+        UIColor.black.setStroke()
+        UIRectStroke(courtRect)
+        
+        // Draw drawings
+        for drawing in drawings {
+            UIColor.blue.setStroke() // Adjust color based on drawing.color if needed
+            drawing.path.lineWidth = drawing.lineWidth
+            drawing.path.stroke()
+        }
+        
+        // Draw players
+        for player in players {
+            UIColor.green.setFill()
+            let playerRect = CGRect(x: player.position.x - 10, y: player.position.y - 10, width: 20, height: 20)
+            context.fillEllipse(in: playerRect)
+            if let number = player.number {
+                let text = NSAttributedString(string: "\(number)", attributes: [.foregroundColor: UIColor.white, .font: UIFont.systemFont(ofSize: 12)])
+                text.draw(at: CGPoint(x: player.position.x - 5, y: player.position.y - 5))
+            }
+        }
+        
+        // Draw basketballs
+        for basketball in basketballs {
+            UIColor.orange.setFill()
+            let ballRect = CGRect(x: basketball.position.x - 5, y: basketball.position.y - 5, width: 10, height: 10)
+            context.fillEllipse(in: ballRect)
+        }
+        
+        // Draw opponents
+        for opponent in opponents {
+            UIColor.red.setFill()
+            let opponentRect = CGRect(x: opponent.position.x - 10, y: opponent.position.y - 10, width: 20, height: 20)
+            context.fillEllipse(in: opponentRect)
+            if let number = opponent.number {
+                let text = NSAttributedString(string: "\(number)", attributes: [.foregroundColor: UIColor.white, .font: UIFont.systemFont(ofSize: 12)])
+                text.draw(at: CGPoint(x: opponent.position.x - 5, y: opponent.position.y - 5))
+            }
+        }
+        
+        // End PDF context
+        UIGraphicsEndPDFContext()
+        
+        // Save PDF to temporary directory
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(playName.isEmpty ? "UntitledPlay" : playName).pdf")
+        pdfDocument.write(to: tempURL)
+        
+        // Present sharing sheet
+        let activityViewController = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
+        if let windowScene = UIApplication.shared.windows.first?.windowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            activityViewController.popoverPresentationController?.sourceView = rootViewController.view
+            rootViewController.present(activityViewController, animated: true, completion: nil)
+        }
+        
+        showSaveDialog = false
+        playName = ""
     }
     
     // Load Play Function (for when editing existing plays)
