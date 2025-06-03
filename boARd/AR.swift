@@ -439,6 +439,13 @@ class CustomARView: ARView {
     // Add this property to CustomARView
     private var draggedEntity: ModelEntity?
     
+    private let movableNames = [
+        "player_44627A68-B4D7-411A-806E-47A4398AD10A",
+        "player_64CA0E6B-9277-42AC-B150-0646700D7CC5",
+        "player_014C329D-B943-4D0D-9273-1E400B5D0739",
+        "ball_14C056EC-591C-4B9D-BF26-A336668BB9AA"
+    ]
+    
     required init(frame frameRect: CGRect) {
         super.init(frame: frameRect)
         self.scene.addAnchor(mainAnchor)
@@ -507,19 +514,15 @@ class CustomARView: ARView {
         let location = recognizer.location(in: self)
         switch recognizer.state {
         case .began:
-            // Hit-test for any player/ball entity at the finger location
-            let hits = self.hitTest(location)
-            if let hit = hits.first(where: { hit in
-                guard let entity = hit.entity as? ModelEntity else { return false }
-                return entity.name != "hoop_court"
-            }) {
-                draggedEntity = hit.entity as? ModelEntity
-                initialDragYPosition = draggedEntity?.position(relativeTo: nil).y
-                print("[DEBUG] Drag began for \(draggedEntity?.name ?? "nil") at position: \(draggedEntity?.position ?? .zero)")
+            // Instead of hit-testing, just pick the first movable entity
+            if let entity = mainAnchor.children.first(where: { movableNames.contains($0.name) }) as? ModelEntity {
+                draggedEntity = entity
+                initialDragYPosition = entity.position(relativeTo: nil).y
+                print("[DEBUG] Hardcoded drag began for \(entity.name) at position: \(entity.position)")
             } else {
                 draggedEntity = nil
                 initialDragYPosition = nil
-                print("[DEBUG] No draggable entity found at pan start.")
+                print("[DEBUG] No hardcoded draggable entity found.")
             }
         case .changed:
             guard let model = draggedEntity, let initialY = initialDragYPosition else { return }
@@ -531,12 +534,10 @@ class CustomARView: ARView {
                     firstResult.worldTransform.columns.3.z
                 )
                 model.setPosition(newPosition, relativeTo: nil)
-                print("[DEBUG] Dragged entity \(model.name) to position: \(model.position)")
-            } else {
-                print("[DEBUG] No raycast result found for pan at \(location)")
+                print("[DEBUG] Hardcoded dragged entity \(model.name) to position: \(model.position)")
             }
         case .ended, .cancelled:
-            print("[DEBUG] Drag ended for \(draggedEntity?.name ?? "nil") at position: \(draggedEntity?.position ?? .zero)")
+            print("[DEBUG] Hardcoded drag ended for \(draggedEntity?.name ?? "nil") at position: \(draggedEntity?.position ?? .zero)")
             draggedEntity = nil
             initialDragYPosition = nil
         default:
