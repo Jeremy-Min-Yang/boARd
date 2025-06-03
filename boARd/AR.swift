@@ -327,20 +327,30 @@ struct ARViewContainer: UIViewRepresentable {
                             // Always set the same fixed rotation
                             clonedEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
                             customARView.mainAnchor.addChild(clonedEntity)
-                            customARView.lastPlacedEntity = clonedEntity
+                            customARView.lastPlacedEntity = nil // Prevent selection for dragging
                             customARView.toggleFocusEntity(isVisible: false)
                             customARView.removePreview()
-
+                            // Remove collision shapes from ModelEntity children of mainAnchor to prevent hit-testing
+                            for child in customARView.mainAnchor.children {
+                                if let model = child as? ModelEntity {
+                                    model.collision = nil
+                                }
+                            }
                             // Call placePlayersAndBalls once to add all assets
                             let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
                             let arCourtWidth: Float = 0.15
                             let arCourtHeight: Float = 0.15 * Float(courtSize.height / courtSize.width)
                             customARView.placePlayersAndBalls(for: play, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
-
+                            customARView.printEntityHierarchy()
                             DispatchQueue.main.async {
                                 self.modelConfirmedForPlacement = nil
                                 self.placedModels.insert("hoop_court")
                                 print("DEBUG: placedModels now contains: \(self.placedModels)")
+                            }
+                            // After adding all player entities in placePlayersAndBalls:
+                            if let testPlayer = customARView.mainAnchor.children.first(where: { $0.name == "player_44627A68-B4D7-411A-806E-47A4398AD10A" }) as? ModelEntity {
+                                customARView.lastPlacedEntity = testPlayer
+                                print("[DEBUG] lastPlacedEntity set automatically to: \(testPlayer.name), position: \(testPlayer.position)")
                             }
                             return
                         }
@@ -404,7 +414,7 @@ struct ARViewContainer: UIViewRepresentable {
 // MARK: - CustomARView
 class CustomARView: ARView {
     var customFocusEntity: FocusEntity?
-    var mainAnchor = AnchorEntity(world: .zero)
+    var mainAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, -2.0))
     var lastPlacedEntity: ModelEntity? // Always move this one
     private var initialDragYPosition: Float?
     // Preview support
@@ -418,9 +428,16 @@ class CustomARView: ARView {
     var entityMap: [UUID: ModelEntity] = [:]
     var isCourtAdjustmentModeEnabled: Bool = false // Property to control adjustment mode
     private var initialMainAnchorScale: SIMD3<Float>? // To store scale at gesture start
+    private var initialMainAnchorOrientation: simd_quatf?
     
     // Dictionary to track placed chibi_kids by their model name
     var placedChibiKids: [String: ModelEntity] = [:]
+    
+    // Add these properties to CustomARView
+    private var initialDragXPosition: Float?
+    private var initialDragZPosition: Float?
+    // Add this property to CustomARView
+    private var draggedEntity: ModelEntity?
     
     required init(frame frameRect: CGRect) {
         super.init(frame: frameRect)
@@ -480,51 +497,48 @@ class CustomARView: ARView {
 
         let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(recognizer:))) // Add pinch gesture
         self.addGestureRecognizer(pinchGesture)
+
+        // Add rotation gesture
+        let rotationGesture = UIRotationGestureRecognizer(target: self, action: #selector(handleRotation(recognizer:)))
+        self.addGestureRecognizer(rotationGesture)
     }
     
     @objc func handlePan(recognizer: UIPanGestureRecognizer) {
         let location = recognizer.location(in: self)
-        
-        guard let entityToDrag = isCourtAdjustmentModeEnabled ? self.mainAnchor : self.lastPlacedEntity else { 
-            print("DEBUG: No entity to drag (mainAnchor or lastPlacedEntity).")
-            return 
-        }
-        
-        // If adjusting court, ensure we're dealing with an AnchorEntity for mainAnchor
-        // or ModelEntity for lastPlacedEntity. MainAnchor is AnchorEntity.
-        var entityToModify: Entity = entityToDrag
-        if isCourtAdjustmentModeEnabled, let anchor = entityToDrag as? AnchorEntity {
-            // We are good, mainAnchor is an AnchorEntity
-        } else if !isCourtAdjustmentModeEnabled, let model = entityToDrag as? ModelEntity {
-            // We are good, lastPlacedEntity should be a ModelEntity
-        } else if isCourtAdjustmentModeEnabled { // entityToDrag is mainAnchor but not castable to AnchorEntity (should not happen)
-             print("DEBUG: mainAnchor is not an AnchorEntity, cannot drag.")
-             return
-        } else { // entityToDrag is lastPlacedEntity but not ModelEntity
-            print("DEBUG: lastPlacedEntity is not a ModelEntity, cannot drag.")
-            return
-        }
-
         switch recognizer.state {
         case .began:
-            // For mainAnchor, initialDragYPosition might need to be relative to its current y.
-            // For ModelEntity, it's fine as is.
-            self.initialDragYPosition = entityToModify.position(relativeTo: nil).y
+            // Hit-test for any player/ball entity at the finger location
+            let hits = self.hitTest(location)
+            if let hit = hits.first(where: { hit in
+                guard let entity = hit.entity as? ModelEntity else { return false }
+                return entity.name != "hoop_court"
+            }) {
+                draggedEntity = hit.entity as? ModelEntity
+                initialDragYPosition = draggedEntity?.position(relativeTo: nil).y
+                print("[DEBUG] Drag began for \(draggedEntity?.name ?? "nil") at position: \(draggedEntity?.position ?? .zero)")
+            } else {
+                draggedEntity = nil
+                initialDragYPosition = nil
+                print("[DEBUG] No draggable entity found at pan start.")
+            }
         case .changed:
-            guard let initialY = self.initialDragYPosition else { return }
-            let results = self.raycast(from: location, allowing: .existingPlaneGeometry, alignment: .any)
+            guard let model = draggedEntity, let initialY = initialDragYPosition else { return }
+            let results = self.raycast(from: location, allowing: .estimatedPlane, alignment: .any)
             if let firstResult = results.first {
-                let newX = firstResult.worldTransform.columns.3.x
-                let newZ = firstResult.worldTransform.columns.3.z
-                // If dragging mainAnchor, initialY is its own Y. If dragging model, initialY is model's Y.
-                let worldPosition = SIMD3<Float>(newX, initialY, newZ)
-                entityToModify.setPosition(worldPosition, relativeTo: nil)
-                if isCourtAdjustmentModeEnabled {
-                    print("DEBUG: Dragging mainAnchor to \(worldPosition)")
-                }
+                let newPosition = SIMD3<Float>(
+                    firstResult.worldTransform.columns.3.x,
+                    initialY,
+                    firstResult.worldTransform.columns.3.z
+                )
+                model.setPosition(newPosition, relativeTo: nil)
+                print("[DEBUG] Dragged entity \(model.name) to position: \(model.position)")
+            } else {
+                print("[DEBUG] No raycast result found for pan at \(location)")
             }
         case .ended, .cancelled:
-            self.initialDragYPosition = nil
+            print("[DEBUG] Drag ended for \(draggedEntity?.name ?? "nil") at position: \(draggedEntity?.position ?? .zero)")
+            draggedEntity = nil
+            initialDragYPosition = nil
         default:
             break
         }
@@ -532,13 +546,30 @@ class CustomARView: ARView {
     
     @objc func handleTap(recognizer: UITapGestureRecognizer) {
         let location = recognizer.location(in: self)
-        if let entity = self.entity(at: location) as? ModelEntity {
-            // If it's a chibi_kid, make it the lastPlacedEntity
-            if entity.name.starts(with: "chibi_kid_") {
-                self.lastPlacedEntity = entity
-                print("DEBUG: Selected chibi_kid for dragging: \(entity.name)")
-            }
+        print("[DEBUG] Tap at screen location: \(location)")
+        // Print all entities hit at the tap location
+        let hits = self.hitTest(location)
+        for hit in hits {
+            print("[DEBUG] Hit entity: \(hit.entity.name), position: \(hit.entity.position), bounds: \(hit.entity.visualBounds(relativeTo: nil))")
         }
+        if let entity = self.entity(at: location) as? ModelEntity {
+            print("[DEBUG] entity(at:) returned: \(entity.name)")
+            // Allow any ModelEntity except hoop_court to be selected for dragging
+            if entity.name != "hoop_court" {
+                self.lastPlacedEntity = entity
+                print("[DEBUG] lastPlacedEntity set to: \(entity.name), position: \(entity.position)")
+                // Visual feedback: scale up briefly
+                let originalScale = entity.scale
+                let newScale = SIMD3<Float>(originalScale.x * 1.3, originalScale.y * 1.3, originalScale.z * 1.3)
+                entity.setScale(newScale, relativeTo: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    entity.setScale(originalScale, relativeTo: nil)
+                }
+            }
+        } else {
+            print("[DEBUG] entity(at:) returned nil")
+        }
+        self.printEntityHierarchy()
     }
 
     @objc func handlePinch(recognizer: UIPinchGestureRecognizer) { // Pinch gesture handler
@@ -556,6 +587,23 @@ class CustomARView: ARView {
         case .ended, .cancelled:
             // Reset initial scale for the next gesture
             initialMainAnchorScale = nil
+        default:
+            break
+        }
+    }
+    
+    @objc func handleRotation(recognizer: UIRotationGestureRecognizer) {
+        guard isCourtAdjustmentModeEnabled else { return }
+        switch recognizer.state {
+        case .began:
+            initialMainAnchorOrientation = mainAnchor.orientation
+        case .changed:
+            guard let initialOrientation = initialMainAnchorOrientation else { return }
+            let rotation = Float(recognizer.rotation)
+            let deltaRotation = simd_quatf(angle: rotation, axis: [0, 1, 0])
+            mainAnchor.orientation = initialOrientation * deltaRotation
+        case .ended, .cancelled:
+            initialMainAnchorOrientation = nil
         default:
             break
         }
@@ -675,15 +723,23 @@ class CustomARView: ARView {
             }
             playerEntity.position = arPosition
             playerEntity.name = "player_\(player.id)"
-            // Text label for player number (commented out for testing)
-            // let textMesh = MeshResource.generateText("\(player.number)", extrusionDepth: 0.02, font: .systemFont(ofSize: 0.1), containerFrame: .zero, alignment: .center, lineBreakMode: .byWordWrapping)
-            // let textMaterial = SimpleMaterial(color: .green, isMetallic: false)
-            // let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
-            // textEntity.position = SIMD3<Float>(0, 0.3, 0) 
-            // playerEntity.addChild(textEntity)
+            // Add 3D text label above the player
+            let aTextEntity = self.textGen(textString: "A")
+            // Position the text flat on top of the cylinder (assuming cylinder height is along Y axis)
+            aTextEntity.position = SIMD3<Float>(0, 0.012, 0) // Adjust Y as needed for your cylinder height
+            // Rotate the text to face up (flat)
+            aTextEntity.orientation = simd_quatf(angle: -.pi/2, axis: [1, 0, 0])
+            playerEntity.addChild(aTextEntity)
             self.mainAnchor.addChild(playerEntity)
             entityMap[player.id] = playerEntity
             print("DEBUG: Added player entity for \(player.id) to entityMap.")
+            playerEntity.generateCollisionShapes(recursive: true)
+            print("playerEntity \(playerEntity.name) has collision: \(playerEntity.components.has(CollisionComponent.self))")
+            let playerBounds = playerEntity.visualBounds(relativeTo: nil)
+            playerEntity.components.set(CollisionComponent(shapes: [.generateBox(size: playerBounds.extents * 10.0)]))
+            print("DEBUG: Player \(playerEntity.name) position: \(playerEntity.position)")
+            playerEntity.components.set(CollisionComponent(shapes: [.generateBox(size: [1.0, 1.0, 1.0])]))
+            print("DEBUG: Set HUGE collision box for \(playerEntity.name)")
         }
         // Balls
         for ball in play.basketballs {
@@ -702,6 +758,13 @@ class CustomARView: ARView {
             self.mainAnchor.addChild(ballEntity)
             entityMap[ball.id] = ballEntity
             print("DEBUG: Added ball entity for \(ball.id) to entityMap.")
+            ballEntity.generateCollisionShapes(recursive: true)
+            print("ballEntity \(ballEntity.name) has collision: \(ballEntity.components.has(CollisionComponent.self))")
+            let ballBounds = ballEntity.visualBounds(relativeTo: nil)
+            ballEntity.components.set(CollisionComponent(shapes: [.generateSphere(radius: 0.5)]))
+            print("DEBUG: Set HUGE collision sphere for \(ballEntity.name)")
+            ballEntity.components.set(CollisionComponent(shapes: [.generateSphere(radius: 0.2)]))
+            print("DEBUG: Ball \(ballEntity.name) position: \(ballEntity.position)")
         }
 
         // Opponents
@@ -722,7 +785,12 @@ class CustomARView: ARView {
             self.mainAnchor.addChild(opponentEntity)
             entityMap[opponent.id] = opponentEntity
             print("DEBUG: Added opponent entity for \(opponent.id) to entityMap.")
+            opponentEntity.generateCollisionShapes(recursive: true)
+            print("opponentEntity \(opponentEntity.name) has collision: \(opponentEntity.components.has(CollisionComponent.self))")
+            let opponentBounds = opponentEntity.visualBounds(relativeTo: nil)
+            opponentEntity.components.set(CollisionComponent(shapes: [.generateBox(size: opponentBounds.extents)]))
         }
+        self.printEntityHierarchy()
     }
     
     // New: Start animation for play
@@ -832,6 +900,36 @@ class CustomARView: ARView {
             distanceCovered += segLen
         }
         return points.last
+    }
+
+    // Add this helper function to CustomARView
+    func textGen(textString: String) -> ModelEntity {
+        let materialVar = SimpleMaterial(color: .white, roughness: 0, isMetallic: false)
+        let depthVar: Float = 0.05 // much thicker
+        let fontVar = UIFont.systemFont(ofSize: 0.3) // much larger font
+        let containerFrameVar = CGRect(x: -0.3, y: -0.3, width: 0.6, height: 0.6)
+        let alignmentVar: CTTextAlignment = .center
+        let lineBreakModeVar : CTLineBreakMode = .byWordWrapping
+        let textMeshResource : MeshResource = .generateText(textString,
+                                           extrusionDepth: depthVar,
+                                           font: fontVar,
+                                           containerFrame: containerFrameVar,
+                                           alignment: alignmentVar,
+                                           lineBreakMode: lineBreakModeVar)
+        let textEntity = ModelEntity(mesh: textMeshResource, materials: [materialVar])
+        return textEntity
+    }
+
+    // Add this debug function to CustomARView
+    func printEntityHierarchy() {
+        print("--- Entity Hierarchy under mainAnchor ---")
+        for child in mainAnchor.children {
+            print("- \(child.name) [\(type(of: child))]")
+            for grandchild in child.children {
+                print("  - \(grandchild.name) [\(type(of: grandchild))]")
+            }
+        }
+        print("----------------------------------------")
     }
 }
 
@@ -1001,8 +1099,8 @@ func map2DToAR(_ point: CGPoint, courtSize: CGSize, arCourtWidth: Float, arCourt
     let xNorm = Float(point.x / courtSize.width)
     let zNorm = Float(point.y / courtSize.height)
     let x = (xNorm - 0.5) * arCourtWidth - 0.19
-    let z = (zNorm - 0.5) * arCourtHeight + 0.04
-    return SIMD3<Float>(x, 0.1, z)
+    let z = (zNorm - 0.5) * arCourtHeight + 0.02
+    return SIMD3<Float>(x, 0.02, z)
 }
 
 // Add exit button support
@@ -1029,3 +1127,4 @@ struct ARContentViewWrapper: View {
 
 
 // here is end
+
