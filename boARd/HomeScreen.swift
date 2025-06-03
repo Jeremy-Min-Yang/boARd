@@ -15,6 +15,13 @@ struct HomeScreen: View {
     @State private var uploadingPlayID: UUID? = nil
     @State private var uploadSuccessPlayID: UUID? = nil
     @State private var showLoginAlert: Bool = false
+
+    // New state for Home Screen Team Plays
+    @State private var teamPlaysForHome: [Models.SavedPlay] = []
+    @State private var isLoadingTeamPlaysForHome: Bool = false
+    @State private var teamPlaysErrorForHome: String? = nil
+    @State private var currentTeamIDForHome: String? = nil
+
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -78,10 +85,77 @@ struct HomeScreen: View {
                             }
                         }
                         .padding(.top, 16)
+
+                        // My Team Plays Section
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("My Team Plays")
+                                .font(.headline)
+                            
+                            if isLoadingTeamPlaysForHome {
+                                ProgressView("Loading team plays...")
+                                    .padding(.vertical)
+                            } else if let error = teamPlaysErrorForHome {
+                                Text("Error loading team plays: \(error)")
+                                    .foregroundColor(.red)
+                            } else if currentTeamIDForHome == nil {
+                                Text("You are not part of a team.")
+                                    .foregroundColor(.gray)
+                            } else if teamPlaysForHome.isEmpty {
+                                Text("No plays found for your team yet.")
+                                    .foregroundColor(.gray)
+                            } else {
+                                ForEach(teamPlaysForHome.prefix(3)) { play in
+                                    Button(action: {
+                                        selectedPlay = play
+                                        editMode = false
+                                        viewOnlyMode = true
+                                        navigateToWhiteboard = true
+                                    }) {
+                                        HStack {
+                                            VStack(alignment: .leading) {
+                                                Text(play.name)
+                                                    .font(.subheadline)
+                                                    .foregroundColor(.primary)
+                                                Text("Team Play - Last modified: \(dateFormatter.string(from: play.lastModified))")
+                                                    .font(.caption2)
+                                                    .foregroundColor(.gray)
+                                            }
+                                            Spacer()
+                                            Image(systemName: "chevron.right")
+                                                .foregroundColor(.gray)
+                                        }
+                                        .padding(.vertical, 8)
+                                        .padding(.horizontal)
+                                        .background(Color(.secondarySystemBackground))
+                                        .cornerRadius(10)
+                                    }
+                                }
+                                if teamPlaysForHome.count > 0 { // Show "View All" if any team plays exist
+                                    Button(action: {
+                                        selectedTab = .team
+                                    }) {
+                                        Text("View All Team Plays")
+                                            .font(.callout)
+                                            .foregroundColor(.blue)
+                                            .padding(.top, 4)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.top, 24) // Add some spacing from Recent Plays
+
                         Spacer()
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .padding(.horizontal, 20)
+                    .onAppear {
+                        // Load local "Recent Plays"
+                        savedPlays = SavedPlayService.shared.loadPlaysLocally()
+                            .sorted { $0.lastModified > $1.lastModified }
+                        
+                        // Load "My Team Plays" for the home screen
+                        fetchTeamPlaysForHomeScreen()
+                    }
                 case .team:
                     TeamPlaysView(
                         showARSheet: $showARSheet, 
@@ -146,6 +220,38 @@ struct HomeScreen: View {
                 message: Text("You must be logged in to upload plays to the cloud."),
                 dismissButton: .default(Text("OK"))
             )
+        }
+    }
+
+    func fetchTeamPlaysForHomeScreen() {
+        self.currentTeamIDForHome = UserService.shared.getCurrentUserTeamID()
+        
+        guard let teamID = self.currentTeamIDForHome else {
+            isLoadingTeamPlaysForHome = false
+            teamPlaysForHome = []
+            teamPlaysErrorForHome = nil // Not an error, just not in a team
+            print("DEBUG HomeScreen: User not in a team, not fetching team plays for home.")
+            return
+        }
+        
+        isLoadingTeamPlaysForHome = true
+        teamPlaysErrorForHome = nil
+        
+        SavedPlayService.shared.fetchPlaysForTeam(teamID: teamID) { result in
+            DispatchQueue.main.async {
+                isLoadingTeamPlaysForHome = false
+                switch result {
+                case .success(let plays):
+                    self.teamPlaysForHome = plays.sorted { $0.lastModified > $1.lastModified }
+                    print("DEBUG HomeScreen: Successfully fetched \(self.teamPlaysForHome.count) team plays for team ID \(teamID).")
+                    if self.teamPlaysForHome.isEmpty {
+                        print("DEBUG HomeScreen: No plays found for team ID \(teamID) on home screen.")
+                    }
+                case .failure(let error):
+                    self.teamPlaysErrorForHome = error.localizedDescription
+                    print("DEBUG HomeScreen: Error fetching team plays for home: \(error.localizedDescription)")
+                }
+            }
         }
     }
 }
