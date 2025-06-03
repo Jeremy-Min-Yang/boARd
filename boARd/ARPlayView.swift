@@ -81,7 +81,8 @@ struct ARPlayView: UIViewRepresentable {
             // Make all materials transparent
             if let modelComponent = courtEntity.model {
                 let transparentMaterial = SimpleMaterial(color: .white.withAlphaComponent(0.5), isMetallic: false)
-                courtEntity.model?.materials = Array(repeating: transparentMaterial, count: modelComponent.materials.count)
+                let materialCount = modelComponent.materials.count
+                courtEntity.model?.materials = Array(repeating: transparentMaterial, count: max(1, materialCount))
             }
             courtEntity.scale = [0.0008, 0.0008, 0.0008]
             courtEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
@@ -181,7 +182,9 @@ struct ARPlayView: UIViewRepresentable {
                 let isOpponent = player.number > 5
                 let material = SimpleMaterial(color: isOpponent ? .red : .green, isMetallic: false)
                 // Apply the material to all parts of the model
-                playerEntity.model?.materials = [material]
+                if let modelComponent = playerEntity.model {
+                    playerEntity.model?.materials = [material]
+                }
                 
                 print("[ARPlayView prepareAnimationData] Successfully loaded 'cylinder.usdz' for player \(player.id)")
             } catch {
@@ -254,8 +257,9 @@ struct ARPlayView: UIViewRepresentable {
             } catch {
                 print("[ARPlayView prepareAnimationData] ERROR loading 'ball.usdz': \(error.localizedDescription). Using default orange sphere.")
                 // Fallback to a sphere if loading fails
+                let ballMaterial = SimpleMaterial(color: .orange, isMetallic: false)
                 ballEntity = ModelEntity(mesh: MeshResource.generateSphere(radius: 0.015),
-                                         materials: [SimpleMaterial(color: .orange, isMetallic: false)])
+                                         materials: [ballMaterial])
             }
 
             // Use static version of map2DToARBall for ball positioning

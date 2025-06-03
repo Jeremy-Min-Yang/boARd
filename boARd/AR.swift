@@ -11,6 +11,7 @@ import ARKit
 import FocusEntity
 import Combine
 import UIKit
+import simd
 
 // MARK: - ARModel
 class ARModel {
@@ -201,8 +202,8 @@ struct ContentView: View {
             let shortPath = Array(arPath.suffix(count))
             print("DEBUG: Animating player \(player.id) with path of \(arPath.count) points.")
             let totalDistance = ARPlayView.calculateARPathLength(points: shortPath)
-            let duration: TimeInterval = max(0.1, Double(totalDistance) / Double(ContentView.walkingSpeed))
-            if let entity = entityMap[player.id] {
+            let duration: TimeInterval = max(0.1, Double(totalDistance) / Double(ARPlayView.walkingSpeed))
+            if let entity = entityMap[player.id] as? ModelEntity {
                 newAnimationData[player.id] = ARAnimationData(entity: entity, pathPointsAR: shortPath, totalDistance: totalDistance, duration: duration, startTime: Date(), isAnimating: true)
             } else {
                 print("DEBUG: No entity found for player \(player.id) in entityMap.")
@@ -222,31 +223,106 @@ struct ContentView: View {
             let shortPath = Array(arPath.suffix(count))
             print("DEBUG: Animating ball \(ball.id) with path of \(arPath.count) points.")
             let totalDistance = ARPlayView.calculateARPathLength(points: shortPath)
-            let duration: TimeInterval = max(0.1, Double(totalDistance) / Double(ContentView.walkingSpeed))
-            if let entity = entityMap[ball.id] {
+            let duration: TimeInterval = max(0.1, Double(totalDistance) / Double(ARPlayView.walkingSpeed))
+            if let entity = entityMap[ball.id] as? ModelEntity {
                 newAnimationData[ball.id] = ARAnimationData(entity: entity, pathPointsAR: shortPath, totalDistance: totalDistance, duration: duration, startTime: Date(), isAnimating: true)
             } else {
                 print("DEBUG: No entity found for ball \(ball.id) in entityMap.")
             }
         }
-        self.animationData = newAnimationData
-        self.isAnimating = true
-        print("DEBUG: animationData count after: \(self.animationData.count)")
-        print("DEBUG: entityMap keys: \(entityMap.keys)")
-        print("DEBUG: Animation started or replayed. isAnimating: \(isAnimating)")
+        // Opponents
+        for opponent in play.opponents {
+            let arPosition2D = map2DToAR(opponent.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let arPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
+            let opponentEntity: ModelEntity
+            if let loaded = try? ModelEntity.loadModel(named: "cylinder") {
+                print("DEBUG: Loaded cylinder model for opponent \(opponent.number)")
+                opponentEntity = loaded
+                opponentEntity.scale = SIMD3<Float>(repeating: 0.0002)
+                
+                let opponentMaterial = SimpleMaterial(color: .red, isMetallic: false)
+                opponentEntity.model?.materials = [opponentMaterial]
+                
+                // Create a MUCH bigger collision shape for easier selection
+                let collisionBox = CollisionComponent(
+                    shapes: [.generateBox(size: [0.3, 0.3, 0.3])],
+                    mode: .trigger,
+                    filter: .sensor
+                )
+                opponentEntity.collision = collisionBox
+            } else {
+                print("DEBUG: Failed to load cylinder model for opponent \(opponent.number), using fallback sphere.")
+                opponentEntity = ModelEntity(mesh: .generateSphere(radius: 0.008), materials: [SimpleMaterial(color: .red, isMetallic: false)])
+                
+                // Create a MUCH bigger collision shape for easier selection
+                let collisionSphere = CollisionComponent(
+                    shapes: [.generateSphere(radius: 0.3)],
+                    mode: .trigger,
+                    filter: .sensor
+                )
+                opponentEntity.collision = collisionSphere
+            }
+            
+            opponentEntity.position = arPosition
+            opponentEntity.name = "opponent_\(opponent.id)"
+            self.mainAnchor().addChild(opponentEntity)
+            self.entityMap[opponent.id] = opponentEntity
+            if let arView = self.arViewInstance {
+                arView.originalPositions[opponent.id] = arPosition
+            }
+            
+            // Make entity draggable
+            opponentEntity.generateCollisionShapes(recursive: false)
+        }
+        // Print camera and entity positions for debugging
+        if let cameraPosition = cameraPosition() {
+            print("[DEBUG] Camera position: \(cameraPosition)")
+        }
+        for (id, entity) in self.entityMap {
+            print("[DEBUG] Entity \(entity.name) position: \(entity.position)")
+        }
+        self.printEntityHierarchy()
     }
     func findEntityByName(_ name: String) -> ModelEntity? {
         // Search in the ARView's mainAnchor for an entity with the given name
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first,
-           let rootViewController = window.rootViewController {
-            for subview in rootViewController.view.subviews {
-                if let arView = subview as? CustomARView {
-                    return arView.mainAnchor.children.compactMap { $0 as? ModelEntity }.first(where: { $0.name == name })
-                }
-            }
-        }
-        return nil
+        let children = mainAnchorChildren()
+        return children.compactMap { $0 as? ModelEntity }.first(where: { $0.name == name })
+    }
+
+    // Add a method to ContentView to access CustomARView's mainAnchor
+    func mainAnchor() -> AnchorEntity {
+        return arViewInstance?.mainAnchor ?? AnchorEntity(world: .zero)
+    }
+
+    // Add a method to ContentView to access CustomARView's session
+    func session() -> ARSession? {
+        return arViewInstance?.session
+    }
+
+    // Add a method to get the camera position
+    func cameraPosition() -> SIMD3<Float>? {
+        return arViewInstance?.session.currentFrame?.camera.transform.columns.3.xyz
+    }
+
+    // Add a method to ContentView to access CustomARView's printEntityHierarchy
+    func printEntityHierarchy() {
+        arViewInstance?.printEntityHierarchy()
+    }
+
+    // Add a method to ContentView to access CustomARView's originalPositions
+    func originalPositions() -> [UUID: SIMD3<Float>]? {
+        return arViewInstance?.originalPositions
+    }
+
+    // Add a method to ContentView to set a value in CustomARView's originalPositions
+    func setOriginalPosition(for id: UUID, position: SIMD3<Float>) {
+        arViewInstance?.originalPositions[id] = position
+    }
+
+    // Add a method to ContentView to access CustomARView's mainAnchor.children
+    func mainAnchorChildren() -> [Entity] {
+        guard let childrenCollection = arViewInstance?.mainAnchor.children else { return [] }
+        return Array(childrenCollection)
     }
 }
 
@@ -323,6 +399,11 @@ struct ARViewContainer: UIViewRepresentable {
                     if model.modelName == "hoop_court" {
                         if let focusPosition = customARView.focusEntityPosition() {
                             customARView.mainAnchor.setPosition(focusPosition, relativeTo: nil)
+                            print("[DEBUG] Court anchor placed at: \(customARView.mainAnchor.position(relativeTo: nil))")
+                            print("[DEBUG] Focus position: \(focusPosition)")
+                            if let camPos = customARView.session.currentFrame?.camera.transform.columns.3 {
+                                print("[DEBUG] Camera position: \(camPos)")
+                            }
                             clonedEntity.setPosition(.zero, relativeTo: nil)
                             // Always set the same fixed rotation
                             clonedEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
@@ -348,7 +429,8 @@ struct ARViewContainer: UIViewRepresentable {
                                 print("DEBUG: placedModels now contains: \(self.placedModels)")
                             }
                             // After adding all player entities in placePlayersAndBalls:
-                            if let testPlayer = customARView.mainAnchor.children.first(where: { $0.name == "player_44627A68-B4D7-411A-806E-47A4398AD10A" }) as? ModelEntity {
+                            let children = Array(customARView.mainAnchor.children)
+                            if let testPlayer = children.first(where: { $0.name == "player_44627A68-B4D7-411A-806E-47A4398AD10A" }) as? ModelEntity {
                                 customARView.lastPlacedEntity = testPlayer
                                 print("[DEBUG] lastPlacedEntity set automatically to: \(testPlayer.name), position: \(testPlayer.position)")
                             }
@@ -438,6 +520,13 @@ class CustomARView: ARView {
     private var initialDragZPosition: Float?
     // Add this property to CustomARView
     private var draggedEntity: ModelEntity?
+    private var draggedEntityOriginalMaterials: [SimpleMaterial]?
+    private var initialDragScreenPosition: CGPoint?
+    private var initialEntityPosition: SIMD3<Float>?
+    private var draggedEntityOriginalScale: SIMD3<Float>?
+    
+    // Store original positions for all moveable entities (players, balls, opponents)
+    var originalPositions: [UUID: SIMD3<Float>] = [:]
     
     private let movableNames = [
         "player_44627A68-B4D7-411A-806E-47A4398AD10A",
@@ -496,7 +585,7 @@ class CustomARView: ARView {
     // MARK: - Gesture Recognizers
     
     private func setupGestureRecognizer() {
-        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(recognizer:)))
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handleCustomPan(recognizer:)))
         self.addGestureRecognizer(panGesture)
         
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(recognizer:)))
@@ -510,36 +599,187 @@ class CustomARView: ARView {
         self.addGestureRecognizer(rotationGesture)
     }
     
-    @objc func handlePan(recognizer: UIPanGestureRecognizer) {
+    @objc func handleCustomPan(recognizer: UIPanGestureRecognizer) {
         let location = recognizer.location(in: self)
+        print("[DEBUG] handleCustomPan state: \(recognizer.state.rawValue), location: \(location)")
+        
         switch recognizer.state {
         case .began:
-            // Instead of hit-testing, just pick the first movable entity
-            if let entity = mainAnchor.children.first(where: { movableNames.contains($0.name) }) as? ModelEntity {
-                draggedEntity = entity
-                initialDragYPosition = entity.position(relativeTo: nil).y
-                print("[DEBUG] Hardcoded drag began for \(entity.name) at position: \(entity.position)")
+            // When pan begins, find the entity to drag
+            let hits = self.hitTest(location)
+            print("[DEBUG] Pan began hits count: \(hits.count)")
+            for hit in hits {
+                print("[DEBUG] Hit entity: \(hit.entity.name)")
+            }
+            
+            // Try direct hitTest
+            if let hit = hits.first, let entity = hit.entity as? ModelEntity {
+                if entity.name.hasPrefix("player_") || entity.name.hasPrefix("ball_") || entity.name.hasPrefix("opponent_") {
+                    print("[DEBUG] Found draggable entity: \(entity.name)")
+                    draggedEntity = entity
+                    initialDragYPosition = entity.position(relativeTo: nil).y
+                    
+                    // Store original scale to restore later
+                    draggedEntityOriginalScale = entity.scale
+                    
+                    // Add more obvious visual indicator - change color temporarily
+                    if let model = entity.model {
+                        // Store original materials for restoration later
+                        let originalMaterials = model.materials.compactMap { $0 as? SimpleMaterial }
+                        
+                        // Make the entity glow/highlight
+                        let highlightMaterial = SimpleMaterial(
+                            color: entity.name.hasPrefix("player_") ? .yellow : .cyan, 
+                            isMetallic: false
+                        )
+                        entity.model?.materials = [highlightMaterial]
+                        
+                        // Store original materials to restore later
+                        self.draggedEntityOriginalMaterials = originalMaterials
+                    }
+                    
+                    // Scale up for emphasis
+                    let originalScale = entity.scale
+                    let highlightScale = SIMD3<Float>(
+                        originalScale.x * 1.5,
+                        originalScale.y * 1.5,
+                        originalScale.z * 1.5
+                    )
+                    entity.scale = highlightScale
+                    
+                    // Save initial screen location for drag tracking
+                    initialDragScreenPosition = location
+                    
+                    // Save initial entity world position
+                    initialEntityPosition = entity.position(relativeTo: nil)
+                }
             } else {
-                draggedEntity = nil
-                initialDragYPosition = nil
-                print("[DEBUG] No hardcoded draggable entity found.")
+                // If no hit, try a brute force method
+                print("[DEBUG] No direct hit found, trying manual proximity check")
+                
+                // Manually check all player, ball, and opponent entities
+                var closestEntity: ModelEntity? = nil
+                var closestDistance: Float = Float.greatestFiniteMagnitude
+                
+                for anchor in self.scene.anchors {
+                    for child in anchor.children {
+                        if let entity = child as? ModelEntity,
+                           (entity.name.hasPrefix("player_") || entity.name.hasPrefix("ball_") || entity.name.hasPrefix("opponent_")) {
+                            
+                            if let screenPos = self.project(entity.position(relativeTo: nil)) {
+                                let dx = Float(location.x - screenPos.x)
+                                let dy = Float(location.y - screenPos.y)
+                                let distance = sqrt(dx*dx + dy*dy)
+                                
+                                print("[DEBUG] Entity \(entity.name) screen pos: \(screenPos), distance: \(distance)")
+                                
+                                // Use a large threshold (150 points) to make selection easier
+                                if distance < 150 && distance < closestDistance {
+                                    closestEntity = entity
+                                    closestDistance = distance
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if let entity = closestEntity {
+                    print("[DEBUG] Found entity by proximity: \(entity.name) at distance \(closestDistance)")
+                    draggedEntity = entity
+                    initialDragYPosition = entity.position(relativeTo: nil).y
+                    
+                    // Store original scale to restore later
+                    draggedEntityOriginalScale = entity.scale
+                    
+                    // Add more obvious visual indicator - change color temporarily
+                    if let model = entity.model {
+                        // Store original materials for restoration later
+                        let originalMaterials = model.materials.compactMap { $0 as? SimpleMaterial }
+                        
+                        // Make the entity glow/highlight
+                        let highlightMaterial = SimpleMaterial(
+                            color: entity.name.hasPrefix("player_") ? .yellow : .cyan, 
+                            isMetallic: false
+                        )
+                        entity.model?.materials = [highlightMaterial]
+                        
+                        // Store original materials to restore later
+                        self.draggedEntityOriginalMaterials = originalMaterials
+                    }
+                    
+                    // Scale up for emphasis
+                    let originalScale = entity.scale
+                    let highlightScale = SIMD3<Float>(
+                        originalScale.x * 1.5,
+                        originalScale.y * 1.5,
+                        originalScale.z * 1.5
+                    )
+                    entity.scale = highlightScale
+                    
+                    // Save initial screen location for drag tracking
+                    initialDragScreenPosition = location
+                    
+                    // Save initial entity world position
+                    initialEntityPosition = entity.position(relativeTo: nil)
+                } else {
+                    print("[DEBUG] No draggable entity found near touch point")
+                }
             }
+            
         case .changed:
-            guard let model = draggedEntity, let initialY = initialDragYPosition else { return }
-            let results = self.raycast(from: location, allowing: .estimatedPlane, alignment: .any)
-            if let firstResult = results.first {
-                let newPosition = SIMD3<Float>(
-                    firstResult.worldTransform.columns.3.x,
-                    initialY,
-                    firstResult.worldTransform.columns.3.z
-                )
-                model.setPosition(newPosition, relativeTo: nil)
-                print("[DEBUG] Hardcoded dragged entity \(model.name) to position: \(model.position)")
+            guard let entity = draggedEntity else { return } // This entity is a child of mainAnchor
+            let location = recognizer.location(in: self)
+
+            if let hitPointOnCourtPlane_World = projectScreenPointToCourt(location) { // This is a WORLD space point
+                // Calculate the target Y in WORLD space, relative to the mainAnchor's base
+                let targetEntityY_World = mainAnchor.position(relativeTo: nil).y + 0.01 // Or your desired offset
+
+                // Construct the full target position in WORLD coordinates
+                let targetWorldPosition = SIMD3<Float>(hitPointOnCourtPlane_World.x,
+                                                     targetEntityY_World,
+                                                     hitPointOnCourtPlane_World.z)
+
+                // Convert the target WORLD position to the LOCAL coordinate system of the mainAnchor
+                // 'from: nil' means the provided position is in world coordinates.
+                let targetLocalPosition = mainAnchor.convert(position: targetWorldPosition, from: nil)
+
+                // Now set the entity's position using these LOCAL coordinates
+                entity.position = targetLocalPosition
+                
+                print("[DEBUG] Dragged entity (local pos): \(entity.position) from World Target: \(targetWorldPosition)")
             }
+            
         case .ended, .cancelled:
-            print("[DEBUG] Hardcoded drag ended for \(draggedEntity?.name ?? "nil") at position: \(draggedEntity?.position ?? .zero)")
+            print("[DEBUG] Pan ended/cancelled")
+            
+            // Restore original appearance of the dragged entity
+            if let entity = draggedEntity {
+                // Restore original scale if available
+                if let originalScale = draggedEntityOriginalScale {
+                    entity.scale = originalScale
+                }
+                
+                // Restore original materials
+                if let originalMaterials = draggedEntityOriginalMaterials, !originalMaterials.isEmpty {
+                    entity.model?.materials = originalMaterials
+                }
+                
+                // Ensure position's Y coordinate stays above the court
+                var pos = entity.position
+                if pos.y < 0.05 {
+                    pos.y = 0.05
+                    entity.position = pos
+                }
+            }
+            
+            // Clear all saved state
             draggedEntity = nil
             initialDragYPosition = nil
+            initialDragScreenPosition = nil
+            initialEntityPosition = nil
+            draggedEntityOriginalMaterials = nil
+            draggedEntityOriginalScale = nil
+            
         default:
             break
         }
@@ -624,7 +864,8 @@ class CustomARView: ARView {
         // Make all materials transparent white for all slots (applies to all assets)
         if let modelComponent = entity.model {
             let transparentMaterial = SimpleMaterial(color: .white.withAlphaComponent(0.5), isMetallic: false)
-            entity.model?.materials = Array(repeating: transparentMaterial, count: modelComponent.materials.count)
+            let materialCount = modelComponent.materials.count
+            entity.model?.materials = Array(repeating: transparentMaterial, count: max(1, materialCount))
         }
         // Rotate the preview court by 90 degrees around Y axis
         entity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
@@ -709,126 +950,152 @@ class CustomARView: ARView {
     func placePlayersAndBalls(for play: Models.SavedPlay, courtSize: CGSize, arCourtWidth: Float, arCourtHeight: Float) {
         print("DEBUG: Placing players and balls for play: \(play.name)")
         entityMap.removeAll()
+        // originalPositions.removeAll() // Also clear original positions if re-placing everything
+
+        // Remove court collision to prevent blocking hit tests
+        if let courtEntity = mainAnchor.children.first(where: { $0.name == "hoop_court" }) as? ModelEntity {
+            courtEntity.collision = nil
+            print("[DEBUG] Set hoop_court collision to nil")
+        }
         // Players
         for player in play.players {
-            let arPosition = map2DToAR(player.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let arPosition2D = map2DToAR(player.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let arPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
             let playerEntity: ModelEntity
             if let loaded = try? ModelEntity.loadModel(named: "cylinder") {
                 print("DEBUG: Loaded cylinder model for player \(player.number)")
                 playerEntity = loaded
                 playerEntity.scale = SIMD3<Float>(repeating: 0.0002)
-                playerEntity.model?.materials = [SimpleMaterial(color: .green, isMetallic: false)]
+                
+                let playerMaterial = SimpleMaterial(color: .green, isMetallic: false)
+                playerEntity.model?.materials = [playerMaterial]
+                
+                // Create a MUCH bigger collision shape for easier selection
+                let collisionBox = CollisionComponent(
+                    shapes: [.generateBox(size: [0.3, 0.3, 0.3])],
+                    mode: .trigger,
+                    filter: .sensor
+                )
+                playerEntity.collision = collisionBox
             } else {
                 print("DEBUG: Failed to load cylinder model for player \(player.number), using fallback sphere.")
                 playerEntity = ModelEntity(mesh: .generateSphere(radius: 0.008), materials: [SimpleMaterial(color: .green, isMetallic: false)])
+                
+                // Create a MUCH bigger collision shape for easier selection
+                let collisionSphere = CollisionComponent(
+                    shapes: [.generateSphere(radius: 0.3)],
+                    mode: .trigger,
+                    filter: .sensor
+                )
+                playerEntity.collision = collisionSphere
             }
+            
             playerEntity.position = arPosition
             playerEntity.name = "player_\(player.id)"
-            // Add 3D text label above the player
-            let aTextEntity = self.textGen(textString: "A")
-            // Position the text flat on top of the cylinder (assuming cylinder height is along Y axis)
-            aTextEntity.position = SIMD3<Float>(0, 0.012, 0) // Adjust Y as needed for your cylinder height
-            // Rotate the text to face up (flat)
-            aTextEntity.orientation = simd_quatf(angle: -.pi/2, axis: [1, 0, 0])
-            playerEntity.addChild(aTextEntity)
             self.mainAnchor.addChild(playerEntity)
-            entityMap[player.id] = playerEntity
-            print("DEBUG: Added player entity for \(player.id) to entityMap.")
-            playerEntity.generateCollisionShapes(recursive: true)
-            print("playerEntity \(playerEntity.name) has collision: \(playerEntity.components.has(CollisionComponent.self))")
-            let playerBounds = playerEntity.visualBounds(relativeTo: nil)
-            playerEntity.components.set(CollisionComponent(shapes: [.generateBox(size: playerBounds.extents * 10.0)]))
-            print("DEBUG: Player \(playerEntity.name) position: \(playerEntity.position)")
-            playerEntity.components.set(CollisionComponent(shapes: [.generateBox(size: [1.0, 1.0, 1.0])]))
-            print("DEBUG: Set HUGE collision box for \(playerEntity.name)")
+            self.entityMap[player.id] = playerEntity
+            self.originalPositions[player.id] = playerEntity.position(relativeTo: nil) // Store WORLD position
+            
+            // Make entity draggable
+            playerEntity.generateCollisionShapes(recursive: false)
         }
         // Balls
         for ball in play.basketballs {
-            let ballARPosition = map2DToAR(ball.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let arPosition2D = map2DToAR(ball.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let ballARPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
             let ballEntity: ModelEntity
             if let loaded = try? ModelEntity.loadModel(named: "ball") {
                 print("DEBUG: Loaded ball model")
                 ballEntity = loaded
                 ballEntity.scale = SIMD3<Float>(repeating: 0.00045)
+                
+                // Create a MUCH bigger collision shape for easier selection
+                let collisionSphere = CollisionComponent(
+                    shapes: [.generateSphere(radius: 0.3)],
+                    mode: .trigger,
+                    filter: .sensor
+                )
+                ballEntity.collision = collisionSphere
             } else {
                 print("DEBUG: Failed to load ball model, using fallback orange sphere.")
-                ballEntity = ModelEntity(mesh: .generateSphere(radius: 0.015), materials: [SimpleMaterial(color: .orange, isMetallic: false)])
+                let ballMaterial = SimpleMaterial(color: .orange, isMetallic: false)
+                ballEntity = ModelEntity(mesh: .generateSphere(radius: 0.015), materials: [ballMaterial])
+                
+                // Create a MUCH bigger collision shape for easier selection
+                let collisionSphere = CollisionComponent(
+                    shapes: [.generateSphere(radius: 0.3)],
+                    mode: .trigger,
+                    filter: .sensor
+                )
+                ballEntity.collision = collisionSphere
             }
+            
             ballEntity.position = ballARPosition
             ballEntity.name = "ball_\(ball.id)"
             self.mainAnchor.addChild(ballEntity)
-            entityMap[ball.id] = ballEntity
-            print("DEBUG: Added ball entity for \(ball.id) to entityMap.")
-            ballEntity.generateCollisionShapes(recursive: true)
-            print("ballEntity \(ballEntity.name) has collision: \(ballEntity.components.has(CollisionComponent.self))")
-            let ballBounds = ballEntity.visualBounds(relativeTo: nil)
-            ballEntity.components.set(CollisionComponent(shapes: [.generateSphere(radius: 0.5)]))
-            print("DEBUG: Set HUGE collision sphere for \(ballEntity.name)")
-            ballEntity.components.set(CollisionComponent(shapes: [.generateSphere(radius: 0.2)]))
-            print("DEBUG: Ball \(ballEntity.name) position: \(ballEntity.position)")
+            self.entityMap[ball.id] = ballEntity
+            self.originalPositions[ball.id] = ballEntity.position(relativeTo: nil) // Store WORLD position
+            
+            // Make entity draggable
+            ballEntity.generateCollisionShapes(recursive: false)
         }
-
         // Opponents
-        for opponent in play.opponents { // Added loop for opponents
-            let arPosition = map2DToAR(opponent.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+        for opponent in play.opponents {
+            let arPosition2D = map2DToAR(opponent.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let arPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
             let opponentEntity: ModelEntity
             if let loaded = try? ModelEntity.loadModel(named: "cylinder") {
                 print("DEBUG: Loaded cylinder model for opponent \(opponent.number)")
                 opponentEntity = loaded
                 opponentEntity.scale = SIMD3<Float>(repeating: 0.0002)
-                opponentEntity.model?.materials = [SimpleMaterial(color: .red, isMetallic: false)]
+                
+                let opponentMaterial = SimpleMaterial(color: .red, isMetallic: false)
+                opponentEntity.model?.materials = [opponentMaterial]
+                
+                // Create a MUCH bigger collision shape for easier selection
+                let collisionBox = CollisionComponent(
+                    shapes: [.generateBox(size: [0.3, 0.3, 0.3])],
+                    mode: .trigger,
+                    filter: .sensor
+                )
+                opponentEntity.collision = collisionBox
             } else {
                 print("DEBUG: Failed to load cylinder model for opponent \(opponent.number), using fallback sphere.")
                 opponentEntity = ModelEntity(mesh: .generateSphere(radius: 0.008), materials: [SimpleMaterial(color: .red, isMetallic: false)])
+                
+                // Create a MUCH bigger collision shape for easier selection
+                let collisionSphere = CollisionComponent(
+                    shapes: [.generateSphere(radius: 0.3)],
+                    mode: .trigger,
+                    filter: .sensor
+                )
+                opponentEntity.collision = collisionSphere
             }
+            
             opponentEntity.position = arPosition
-            opponentEntity.name = "opponent_\(opponent.id)" // Naming convention for opponents
+            opponentEntity.name = "opponent_\(opponent.id)"
             self.mainAnchor.addChild(opponentEntity)
-            entityMap[opponent.id] = opponentEntity
-            print("DEBUG: Added opponent entity for \(opponent.id) to entityMap.")
-            opponentEntity.generateCollisionShapes(recursive: true)
-            print("opponentEntity \(opponentEntity.name) has collision: \(opponentEntity.components.has(CollisionComponent.self))")
-            let opponentBounds = opponentEntity.visualBounds(relativeTo: nil)
-            opponentEntity.components.set(CollisionComponent(shapes: [.generateBox(size: opponentBounds.extents)]))
+            self.entityMap[opponent.id] = opponentEntity
+            self.originalPositions[opponent.id] = opponentEntity.position(relativeTo: nil) // Store WORLD position
+            
+            // Make entity draggable
+            opponentEntity.generateCollisionShapes(recursive: false)
         }
-        self.printEntityHierarchy()
-    }
-    
-    // New: Start animation for play
-    func startAnimation(with play: Models.SavedPlay) {
-        print("DEBUG: CustomARView.startAnimation called. Clearing previous animationData.")
-        animationData.removeAll()
-        isAnimating = false // Reset animation state before starting new one
-
-        print("DEBUG: Current entityMap count: \(entityMap.count)")
-        for (id, entity) in entityMap {
-            print("DEBUG: entityMap entry: ID \(id), Entity Name: \(entity.name)")
+        // Print camera and entity positions for debugging
+        if let cameraPosition = cameraPosition() {
+            print("[DEBUG] Camera position: \(cameraPosition)")
         }
-        print("DEBUG: mainAnchor children count: \(self.mainAnchor.children.count)")
-        for child in self.mainAnchor.children {
-            print("DEBUG: mainAnchor child: Name \(child.name), ID \(child.id)")
+        for (id, entity) in self.entityMap {
+            if let modelEntity = entity as? ModelEntity {
+                print("DEBUG: entityMap entry: ID \(id), Entity Name: \(modelEntity.name)")
+            } else {
+                print("DEBUG: entityMap entry: ID \(id), Entity Type: \(type(of: entity))")
+            }
         }
-
-        let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
-        let arCourtWidth: Float = 0.15
-        let arCourtHeight: Float = 0.15 * Float(courtSize.height / courtSize.width)
-        // In startAnimation(with play: Models.SavedPlay) in CustomARView, before building animationData:
-        print("DEBUG: --- Animation Pre-Check ---")
-        let playerIDs = Set(play.players.map { $0.id })
-        let ballIDs = Set(play.basketballs.map { $0.id })
-        let entityMapIDs = Set(entityMap.keys)
-        let sceneEntityNames = Set(mainAnchor.children.compactMap { $0.name })
-        print("DEBUG: play.players IDs: \(playerIDs)")
-        print("DEBUG: play.basketballs IDs: \(ballIDs)")
-        print("DEBUG: entityMap keys: \(entityMapIDs)")
-        print("DEBUG: mainAnchor children names: \(sceneEntityNames)")
-        let missingPlayers = playerIDs.subtracting(entityMapIDs)
-        let missingBalls = ballIDs.subtracting(entityMapIDs)
-        if missingPlayers.isEmpty && missingBalls.isEmpty {
-            print("DEBUG: All player and ball entities are present in entityMap and AR scene. Ready to animate!")
-        } else {
-            print("DEBUG: WARNING: Missing entities for animation. Missing players: \(missingPlayers), Missing balls: \(missingBalls)")
-        }
+        // Define missingPlayers and missingBalls for debug print
+        let missingPlayers = play.players.filter { self.entityMap[$0.id] == nil }
+        let missingBalls = play.basketballs.filter { self.entityMap[$0.id] == nil }
+        print("DEBUG: WARNING: Missing entities for animation. Missing players: \(missingPlayers), Missing balls: \(missingBalls)")
         // Build animation data for players
         for player in play.players {
             guard let pathId = player.assignedPathId,
@@ -842,9 +1109,9 @@ class CustomARView: ARView {
             let count = max(2, Int(Double(arPath.count) * percent))
             let shortPath = Array(arPath.suffix(count))
             print("DEBUG: Animating player \(player.id) with path of \(arPath.count) points.")
-            if let entity = entityMap[player.id] {
-                let totalDistance = ARPlayView.calculateARPathLength(points: shortPath)
-                let duration: TimeInterval = max(0.1, Double(totalDistance) / Double(ContentView.walkingSpeed))
+            let totalDistance = ARPlayView.calculateARPathLength(points: shortPath)
+            let duration: TimeInterval = max(0.1, Double(totalDistance) / Double(ARPlayView.walkingSpeed))
+            if let entity = entityMap[player.id] as? ModelEntity {
                 animationData[player.id] = ARAnimationData(entity: entity, pathPointsAR: shortPath, totalDistance: totalDistance, duration: duration, startTime: Date(), isAnimating: true)
             } else {
                 print("DEBUG: No entity found for player \(player.id) in entityMap.")
@@ -863,9 +1130,9 @@ class CustomARView: ARView {
             let count = max(2, Int(Double(arPath.count) * percent))
             let shortPath = Array(arPath.suffix(count))
             print("DEBUG: Animating ball \(ball.id) with path of \(arPath.count) points.")
-            if let entity = entityMap[ball.id] {
-                let totalDistance = ARPlayView.calculateARPathLength(points: shortPath)
-                let duration: TimeInterval = max(0.1, Double(totalDistance) / Double(ContentView.walkingSpeed))
+            let totalDistance = ARPlayView.calculateARPathLength(points: shortPath)
+            let duration: TimeInterval = max(0.1, Double(totalDistance) / Double(ARPlayView.walkingSpeed))
+            if let entity = entityMap[ball.id] as? ModelEntity {
                 animationData[ball.id] = ARAnimationData(entity: entity, pathPointsAR: shortPath, totalDistance: totalDistance, duration: duration, startTime: Date(), isAnimating: true)
             } else {
                 print("DEBUG: No entity found for ball \(ball.id) in entityMap.")
@@ -905,7 +1172,7 @@ class CustomARView: ARView {
 
     // Add this helper function to CustomARView
     func textGen(textString: String) -> ModelEntity {
-        let materialVar = SimpleMaterial(color: .white, roughness: 0, isMetallic: false)
+        let materialVar = SimpleMaterial(color: .white, roughness: 0.0, isMetallic: false)
         let depthVar: Float = 0.05 // much thicker
         let fontVar = UIFont.systemFont(ofSize: 0.3) // much larger font
         let containerFrameVar = CGRect(x: -0.3, y: -0.3, width: 0.6, height: 0.6)
@@ -931,6 +1198,124 @@ class CustomARView: ARView {
             }
         }
         print("----------------------------------------")
+    }
+
+    func startAnimation(with play: Models.SavedPlay) {
+        print("!!! [CRITICAL DEBUG] START OF CustomARView.startAnimation. Attempting to revert entities. !!!")
+
+        // Revert all moveable entities to their original positions before animating
+        print("[DEBUG] Reverting entities. entityMap count: \(entityMap.count). originalPositions count: \(originalPositions.count).")
+        if entityMap.isEmpty {
+            print("[DEBUG] entityMap is EMPTY during reset attempt.")
+        } else {
+            for (id, entity) in entityMap {
+                guard let modelEntity = entity as? ModelEntity else {
+                    print("[DEBUG] Entity with ID \(id) in entityMap is NOT a ModelEntity. Type: \(type(of: entity)). Skipping reset.")
+                    continue
+                }
+
+                if let originalWorldPos = originalPositions[id] {
+                    let originalLocalPos = mainAnchor.convert(position: originalWorldPos, from: nil)
+                    var newLocalPos = originalLocalPos
+                    newLocalPos.y = max(0.01, originalLocalPos.y) // Ensure slightly above anchor's local origin plane
+
+                    modelEntity.position = newLocalPos // Set the position
+
+                    if modelEntity.name.starts(with: "opponent_") {
+                        print("[DEBUG] OPPONENT RESET: \(modelEntity.name) (ID: \(id)) to localPos: \(newLocalPos) (from worldPos: \(originalWorldPos))")
+                    } else {
+                        print("[DEBUG] ENTITY RESET: \(modelEntity.name) (ID: \(id)) to localPos: \(newLocalPos) (from worldPos: \(originalWorldPos))")
+                    }
+                } else {
+                    print("[DEBUG] NO OriginalPosition found for \(modelEntity.name) (ID: \(id)) in originalPositions. Skipping reset.")
+                }
+            }
+        }
+        print("[DEBUG] Entity reversion process COMPLETED.")
+
+        // ----- Original start of animation setup -----
+        print("DEBUG: CustomARView.startAnimation called. Clearing previous animationData.")
+        animationData.removeAll()
+        isAnimating = false // Reset animation state before starting new one
+
+        print("DEBUG: Current entityMap count: \(entityMap.count)")
+        for (id, entity) in entityMap {
+            if let modelEntity = entity as? ModelEntity {
+                print("DEBUG: entityMap entry: ID \(id), Entity Name: \(modelEntity.name)")
+            } else {
+                print("DEBUG: entityMap entry: ID \(id), Entity Type: \(type(of: entity))")
+            }
+        }
+        print("DEBUG: mainAnchor children count: \(self.mainAnchor.children.count)")
+        let children = self.mainAnchor.children
+        for child in children {
+            print("DEBUG: mainAnchor child: Name \(child.name), ID \(child.id)")
+        }
+
+        let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
+        let arCourtWidth: Float = 0.15
+        let arCourtHeight: Float = 0.15 * Float(courtSize.height / courtSize.width)
+        // Build animation data for players
+        for player in play.players {
+            guard let pathId = player.assignedPathId,
+                  let drawing = play.drawings.first(where: { $0.id == pathId }),
+                  !drawing.points.isEmpty else {
+                print("DEBUG: Skipping player \(player.id) - no assigned path or empty path.")
+                continue
+            }
+            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
+            let percent: Double = 0.8
+            let count = max(2, Int(Double(arPath.count) * percent))
+            let shortPath = Array(arPath.suffix(count))
+            print("DEBUG: Animating player \(player.id) with path of \(arPath.count) points.")
+            let totalDistance = ARPlayView.calculateARPathLength(points: shortPath)
+            let duration: TimeInterval = max(0.1, Double(totalDistance) / Double(ARPlayView.walkingSpeed))
+            if let entity = entityMap[player.id] as? ModelEntity {
+                animationData[player.id] = ARAnimationData(entity: entity, pathPointsAR: shortPath, totalDistance: totalDistance, duration: duration, startTime: Date(), isAnimating: true)
+            } else {
+                print("DEBUG: No entity found for player \(player.id) in entityMap.")
+            }
+        }
+        // Build animation data for balls
+        for ball in play.basketballs {
+            guard let pathId = ball.assignedPathId,
+                  let drawing = play.drawings.first(where: { $0.id == pathId }),
+                  !drawing.points.isEmpty else {
+                print("DEBUG: Skipping ball \(ball.id) - no assigned path or empty path.")
+                continue
+            }
+            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
+            let percent: Double = 0.8
+            let count = max(2, Int(Double(arPath.count) * percent))
+            let shortPath = Array(arPath.suffix(count))
+            print("DEBUG: Animating ball \(ball.id) with path of \(arPath.count) points.")
+            let totalDistance = ARPlayView.calculateARPathLength(points: shortPath)
+            let duration: TimeInterval = max(0.1, Double(totalDistance) / Double(ARPlayView.walkingSpeed))
+            if let entity = entityMap[ball.id] as? ModelEntity {
+                animationData[ball.id] = ARAnimationData(entity: entity, pathPointsAR: shortPath, totalDistance: totalDistance, duration: duration, startTime: Date(), isAnimating: true)
+            } else {
+                print("DEBUG: No entity found for ball \(ball.id) in entityMap.")
+            }
+        }
+        isAnimating = !animationData.isEmpty
+        print("DEBUG: Animation started in ARView. animationData count: \(animationData.count), isAnimating: \(isAnimating)")
+    }
+
+    // Add this function to CustomARView
+    func cameraPosition() -> SIMD3<Float>? {
+        return self.session.currentFrame?.camera.transform.columns.3.xyz
+    }
+
+    // Add this helper to CustomARView
+    func projectScreenPointToCourt(_ point: CGPoint) -> SIMD3<Float>? {
+        guard let ray = self.ray(through: point) else { return nil }
+        let courtOrigin = mainAnchor.position(relativeTo: nil)
+        let courtNormal = mainAnchor.transform.matrix.columns.1.xyz // Y axis
+        let denom = simd_dot(ray.direction, courtNormal)
+        if abs(denom) < 1e-6 { return nil } // Parallel, no intersection
+        let t = simd_dot(courtOrigin - ray.origin, courtNormal) / denom
+        if t < 0 { return nil } // Intersection behind camera
+        return ray.origin + t * ray.direction
     }
 }
 
@@ -1101,7 +1486,7 @@ func map2DToAR(_ point: CGPoint, courtSize: CGSize, arCourtWidth: Float, arCourt
     let zNorm = Float(point.y / courtSize.height)
     let x = (xNorm - 0.5) * arCourtWidth - 0.19
     let z = (zNorm - 0.5) * arCourtHeight + 0.02
-    return SIMD3<Float>(x, 0.02, z)
+    return SIMD3<Float>(x, 0.05, z) // Raise Y position to 0.05 to ensure visibility above court
 }
 
 // Add exit button support
@@ -1125,7 +1510,6 @@ struct ARContentViewWrapper: View {
         }
     }
 }
-
 
 // here is end
 
