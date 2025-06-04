@@ -325,17 +325,11 @@ struct TeamPlaysView: View {
                                         showARSheet = true
                                     },
                                     onDelete: {
-                                        // Deleting team plays needs permission checks.
-                                        // For now, this action can be disabled or show an alert.
-                                        print("Attempted to delete team play: \(play.name). Not implemented yet.")
-                                        // self.deleteTeamPlay(play) // Placeholder for future
+                                        deleteTeamPlay(play)
                                     },
-                                    onUpload: {
-                                        // Uploading is not applicable for plays already in a team context.
-                                        print("Upload button pressed for team play: \(play.name). No action taken.")
-                                    },
-                                    isUploading: false, // Never uploading from team view like this
-                                    uploadSuccess: false // Not applicable
+                                    onUpload: {},
+                                    isUploading: false,
+                                    uploadSuccess: false
                                 )
                             }
                         }
@@ -394,15 +388,14 @@ struct TeamPlaysView: View {
     }
     
     // Placeholder for deleting a team play (would need permissions)
-    /*
     private func deleteTeamPlay(_ play: Models.SavedPlay) {
-        // 1. Check permissions (e.g., is user creator or team admin?)
-        // 2. If permitted, call SavedPlayService.shared.deletePlay(playID: play.id.uuidString) { ... }
-        // 3. On success, remove from self.teamPlays and potentially refresh
+        // For now, allow any user to delete their own team play
         teamPlays.removeAll { $0.id == play.id }
-        // SavedPlayService.shared.deletePlay(playID: play.id.uuidString) { error in ... }
+        SavedPlayService.shared.deletePlayEverywhere(playID: play.id.uuidString) { _ in
+            // Optionally refresh from Firestore if needed
+            teamPlays = teamPlays.filter { $0.id != play.id }
+        }
     }
-    */
 }
 
 struct SavedPlaysScreen: View {
@@ -418,6 +411,8 @@ struct SavedPlaysScreen: View {
     @State private var uploadingPlayID: UUID? = nil
     @State private var uploadSuccessPlayID: UUID? = nil
     @State private var showLoginAlert: Bool = false
+    @State private var playToDelete: Models.SavedPlay? = nil
+    @State private var showDeleteConfirmation: Bool = false
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -530,7 +525,8 @@ struct SavedPlaysScreen: View {
                                             showARSheet = true
                                         },
                                         onDelete: {
-                                            deletePlay(play)
+                                            playToDelete = play
+                                            showDeleteConfirmation = true
                                         },
                                         onUpload: {
                                             if Auth.auth().currentUser == nil {
@@ -574,10 +570,27 @@ struct SavedPlaysScreen: View {
             savedPlays = SavedPlayService.shared.loadPlaysLocally()
                 .sorted { $0.lastModified > $1.lastModified }
         }
+        .alert(isPresented: $showDeleteConfirmation) {
+            Alert(
+                title: Text("Delete Play"),
+                message: Text("Are you sure you want to delete '\(playToDelete?.name ?? "")'? This cannot be undone."),
+                primaryButton: .destructive(Text("Delete")) {
+                    if let play = playToDelete {
+                        deletePlay(play)
+                    }
+                    playToDelete = nil
+                },
+                secondaryButton: .cancel {
+                    playToDelete = nil
+                }
+            )
+        }
     }
     private func deletePlay(_ play: Models.SavedPlay) {
-        savedPlays.removeAll { $0.id == play.id }
-        SavedPlayService.shared.deletePlay(playID: play.id.uuidString) { _ in }
+        SavedPlayService.shared.deletePlayEverywhere(playID: play.id.uuidString) { _ in
+            // Refresh local state after deletion
+            savedPlays = SavedPlayService.shared.loadPlaysLocally().sorted { $0.lastModified > $1.lastModified }
+        }
     }
 }
 
@@ -591,7 +604,6 @@ struct SavedPlayRow: View {
     let onUpload: () -> Void
     let isUploading: Bool
     let uploadSuccess: Bool
-    @State private var showDeleteConfirmation = false
     var body: some View {
         VStack(alignment: .leading) {
             HStack {
@@ -625,7 +637,8 @@ struct SavedPlayRow: View {
                             .foregroundColor(.purple)
                     }
                     Button(action: {
-                        showDeleteConfirmation = true
+                        print("[DEBUG SavedPlayRow] Trash icon tapped for play: \(play.name)")
+                        // onDelete() // Temporarily bypassed
                     }) {
                         Image(systemName: "trash")
                             .foregroundColor(.red)
@@ -651,16 +664,6 @@ struct SavedPlayRow: View {
             Divider()
         }
         .padding(.horizontal, 8)
-        .alert(isPresented: $showDeleteConfirmation) {
-            Alert(
-                title: Text("Delete Play"),
-                message: Text("Are you sure you want to delete '\(play.name)'? This cannot be undone."),
-                primaryButton: .destructive(Text("Delete")) {
-                    onDelete()
-                },
-                secondaryButton: .cancel()
-            )
-        }
     }
 }
 

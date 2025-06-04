@@ -193,6 +193,31 @@ struct ARPlayView: UIViewRepresentable {
                 playerEntity = ModelEntity(mesh: MeshResource.generateSphere(radius: 0.02),
                                            materials: [SimpleMaterial(color: isOpponent ? .red : .green, isMetallic: false)])
             }
+            // Add number label as 3D text above the cylinder (debug: make it very large and bold)
+            let textMesh = MeshResource.generateText(
+                "\(player.number)",
+                extrusionDepth: 0.01, // Much thicker
+                font: .systemFont(ofSize: 0.4, weight: .bold), // Much larger and bold
+                containerFrame: .zero,
+                alignment: .center,
+                lineBreakMode: .byWordWrapping
+            )
+            let textMaterial = SimpleMaterial(color: .white, isMetallic: false)
+            let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
+            textEntity.position = SIMD3<Float>(0, 0.04, 0)
+            textEntity.setScale(SIMD3<Float>(repeating: 1.0), relativeTo: nil) // Make text even larger
+            // Try different orientations (comment/uncomment as needed)
+            // textEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
+            // textEntity.orientation = simd_quatf(angle: .pi, axis: [0, 1, 0])
+            playerEntity.addChild(textEntity)
+            print("Added text label \(player.number) to player \(player.id)")
+            print("Children of playerEntity after adding text:", playerEntity.children)
+            // Add a debug sphere above the cylinder to verify child visibility
+            let debugSphere = ModelEntity(mesh: .generateSphere(radius: 0.01), materials: [SimpleMaterial(color: .yellow, isMetallic: false)])
+            debugSphere.position = SIMD3<Float>(0, 0.06, 0)
+            playerEntity.addChild(debugSphere)
+            print("Added debug sphere above player \(player.id)")
+            print("Children of playerEntity after adding debug sphere:", playerEntity.children)
             
             let initialPosAR = ARPlayView.rotate180Y(
                 ARPlayView.map2DToAR(player.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
@@ -240,6 +265,9 @@ struct ARPlayView: UIViewRepresentable {
             } else {
                 print("[ARPlayView prepareAnimationData] No path assigned for player \(player.id)")
             }
+            print("playerEntity scale:", playerEntity.scale)
+            print("textEntity scale:", textEntity.scale)
+            print("debugSphere scale:", debugSphere.scale)
         }
         for (index, ballData) in play.basketballs.enumerated() {
             print("[ARPlayView prepareAnimationData] Ball [\(index)] details: ID \(ballData.id), Pos \(ballData.position.cgPoint), PathID \(ballData.assignedPathId?.uuidString ?? "None"), PlayerID \(ballData.assignedPlayerId?.uuidString ?? "None")")
@@ -282,6 +310,20 @@ struct ARPlayView: UIViewRepresentable {
                 }
             }
         }
+        // At the end of prepareAnimationData, add a floating debug sphere directly to courtAnchor
+        let floatingSphere = ModelEntity(mesh: .generateSphere(radius: 0.02), materials: [SimpleMaterial(color: .red, isMetallic: false)])
+        floatingSphere.position = SIMD3<Float>(0, 0.1, 0) // Well above the court
+        courtAnchor.addChild(floatingSphere)
+        print("Added floating debug sphere to courtAnchor")
+        // Print the full scene hierarchy for courtAnchor
+        print("=== Scene Hierarchy for courtAnchor ===")
+        for child in courtAnchor.children {
+            print("- \(child.name) [\(type(of: child))]")
+            for subchild in child.children {
+                print("  - \(subchild.name) [\(type(of: subchild))]")
+            }
+        }
+        print("=======================================")
         return preparedResult
     }
 

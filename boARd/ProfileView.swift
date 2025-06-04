@@ -25,103 +25,131 @@ struct ProfileView: View {
     }
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            Image(systemName: "person.crop.circle")
-                .resizable()
-                .frame(width: 100, height: 100)
-                .foregroundColor(.blue)
-            
-            if let user = authViewModel.user {
-                if user.isAnonymous {
-                    Text("Guest")
-                        .font(.title2)
+        ZStack {
+            VStack(spacing: 24) {
+                Spacer()
+                Image(systemName: "person.crop.circle")
+                    .resizable()
+                    .frame(width: 100, height: 100)
+                    .foregroundColor(.blue)
+                
+                if let user = authViewModel.user {
+                    if user.isAnonymous {
+                        Text("Guest")
+                            .font(.title2)
+                            .foregroundColor(.gray)
+                    } else {
+                        Text(user.email ?? "Unknown")
+                            .font(.title2)
+                    }
+                    Text("User ID: \(user.uid)")
+                        .font(.caption)
                         .foregroundColor(.gray)
-                } else {
-                    Text(user.email ?? "Unknown")
-                        .font(.title2)
                 }
-                Text("User ID: \(user.uid)")
-                    .font(.caption)
-                    .foregroundColor(.gray)
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Name:")
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Text(name)
+                    }
+                    HStack {
+                        Text("Sport:")
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Text(selectedSport)
+                    }
+                    HStack {
+                        Text("Position:")
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Text(selectedPosition)
+                    }
+                    HStack {
+                        Text("Team ID:")
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Text(teamID.isEmpty ? "-" : teamID)
+                    }
+                }
+                .frame(width: 280)
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(12)
+
+                if let error = errorMessage {
+                    Text(error)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                }
+
+                Button(action: { withAnimation { showEditSheet = true } }) {
+                    Text("Edit")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                }
+                Button(action: {
+                    authViewModel.signOut()
+                }) {
+                    Text("Sign Out")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                }
+                Spacer()
             }
-            
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Name:")
-                        .fontWeight(.semibold)
-                    Spacer()
-                    Text(name)
-                }
-                HStack {
-                    Text("Sport:")
-                        .fontWeight(.semibold)
-                    Spacer()
-                    Text(selectedSport)
-                }
-                HStack {
-                    Text("Position:")
-                        .fontWeight(.semibold)
-                    Spacer()
-                    Text(selectedPosition)
-                }
-                HStack {
-                    Text("Team ID:")
-                        .fontWeight(.semibold)
-                    Spacer()
-                    Text(teamID.isEmpty ? "-" : teamID)
-                }
-            }
-            .frame(width: 280)
             .padding()
-            .background(Color(.secondarySystemBackground))
-            .cornerRadius(12)
+            .navigationTitle("Profile")
+            .onAppear(perform: loadProfile)
 
-            if let error = errorMessage {
-                Text(error)
-                    .foregroundColor(.red)
-                    .font(.caption)
-            }
-
-            Button(action: { showEditSheet = true }) {
-                Text("Edit")
-                    .font(.headline)
+            if showEditSheet {
+                Color.black.opacity(0.4)
+                    .edgesIgnoringSafeArea(.all)
+                    .transition(.opacity)
+                    .zIndex(1)
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button(action: { withAnimation { showEditSheet = false } }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .resizable()
+                                .frame(width: 32, height: 32)
+                                .foregroundColor(.gray)
+                                .padding(8)
+                        }
+                    }
                     .frame(maxWidth: .infinity)
+                    EditProfileSheet(
+                        name: $name,
+                        teamID: $teamID,
+                        selectedSport: $selectedSport,
+                        selectedPosition: $selectedPosition,
+                        sports: sports,
+                        positionsBySport: positionsBySport,
+                        isSaving: $isSaving,
+                        errorMessage: $errorMessage,
+                        onSave: saveProfile
+                    )
+                    .frame(maxWidth: 400, maxHeight: 500)
+                    .background(Color(.systemBackground))
+                    .cornerRadius(16)
+                    .shadow(radius: 20)
                     .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                    .padding(.horizontal)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .transition(.opacity)
+                .zIndex(2)
             }
-            Button(action: {
-                authViewModel.signOut()
-            }) {
-                Text("Sign Out")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.red)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                    .padding(.horizontal)
-            }
-            Spacer()
-        }
-        .padding()
-        .navigationTitle("Profile")
-        .onAppear(perform: loadProfile)
-        .sheet(isPresented: $showEditSheet) {
-            EditProfileSheet(
-                name: $name,
-                teamID: $teamID,
-                selectedSport: $selectedSport,
-                selectedPosition: $selectedPosition,
-                sports: sports,
-                positionsBySport: positionsBySport,
-                isSaving: $isSaving,
-                errorMessage: $errorMessage,
-                onSave: saveProfile
-            )
         }
     }
 

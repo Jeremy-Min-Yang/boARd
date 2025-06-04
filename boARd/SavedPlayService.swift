@@ -519,4 +519,16 @@ public class SavedPlayService {
                 completion(.success(plays))
             }
     }
+
+    // Delete a play both locally and in the cloud
+    func deletePlayEverywhere(playID: String, completion: ((Error?) -> Void)? = nil) {
+        // Remove from local storage
+        var localPlays = self.loadPlaysLocally()
+        localPlays.removeAll { $0.id.uuidString == playID }
+        self.savePlaysLocally(localPlays)
+        // Remove from Firestore
+        self.deletePlay(playID: playID) { error in
+            completion?(error)
+        }
+    }
 } 
