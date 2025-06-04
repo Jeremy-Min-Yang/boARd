@@ -154,7 +154,8 @@ public class SavedPlayService {
             "id": basketball.id.uuidString,
             "position": ["x": basketball.position.x, "y": basketball.position.y],
             "normalizedPosition": basketball.normalizedPosition.map { ["x": $0.x, "y": $0.y] } as Any,
-            "assignedPathId": basketball.assignedPathId?.uuidString as Any
+            "assignedPathId": basketball.assignedPathId?.uuidString as Any,
+            "assignedPlayerId": basketball.assignedPlayerId?.uuidString as Any
         ]
     }
     
@@ -262,6 +263,11 @@ public class SavedPlayService {
             assignedPathId = UUID(uuidString: assignedPathIdString)
         }
         
+        var assignedPlayerId: UUID? = nil
+        if let assignedPlayerIdString = dict["assignedPlayerId"] as? String, !assignedPlayerIdString.isEmpty {
+            assignedPlayerId = UUID(uuidString: assignedPlayerIdString)
+        }
+        
         var id = UUID()
         if let idString = dict["id"] as? String,
            let parsedId = UUID(uuidString: idString) {
@@ -272,7 +278,8 @@ public class SavedPlayService {
             id: id,
             position: position,
             normalizedPosition: normalizedPosition,
-            assignedPathId: assignedPathId
+            assignedPathId: assignedPathId,
+            assignedPlayerId: assignedPlayerId
         )
     }
     
@@ -377,7 +384,8 @@ public class SavedPlayService {
         return BasketballItem(
             position: basketballData.position.cgPoint,
             normalizedPosition: basketballData.normalizedPosition?.cgPoint,
-            assignedPathId: basketballData.assignedPathId
+            assignedPathId: basketballData.assignedPathId,
+            assignedPlayerId: basketballData.assignedPlayerId
         )
     }
     
@@ -385,7 +393,8 @@ public class SavedPlayService {
         return Models.BasketballData(
             position: Models.PointData.from(cgPoint: basketball.position),
             normalizedPosition: basketball.normalizedPosition.map { Models.PointData.from(cgPoint: $0) },
-            assignedPathId: basketball.assignedPathId
+            assignedPathId: basketball.assignedPathId,
+            assignedPlayerId: basketball.assignedPlayerId
         )
     }
     

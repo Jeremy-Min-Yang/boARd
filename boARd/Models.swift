@@ -225,6 +225,7 @@ struct Models {
         public var position: PointData
         public var normalizedPosition: PointData?
         public var assignedPathId: UUID?
+        public var assignedPlayerId: UUID?
     }
 
     struct OpponentData: Codable, Identifiable {

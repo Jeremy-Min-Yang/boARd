@@ -555,6 +555,20 @@ struct WhiteboardView: View {
         play.drawings.forEach { drawingData in
             drawings.append(SavedPlayService.convertToDrawing(drawingData: drawingData))
         }
+
+        // After loading all items, re-establish basketball-to-player connections
+        for i in basketballs.indices {
+            if let assignedPlayerID = basketballs[i].assignedPlayerId {
+                if let assignedPlayer = players.first(where: { $0.id == assignedPlayerID }) {
+                    // Snap the basketball's position to its assigned player's position
+                    basketballs[i].position = assignedPlayer.position
+                    // Optionally, update normalized position if needed, though this might be recalculated on next drag
+                    // let size = courtType.virtualCourtSize
+                    // basketballs[i].normalizedPosition = CGPoint(x: assignedPlayer.position.x / size.width, y: assignedPlayer.position.y / size.height)
+                    print("Re-linked basketball \(basketballs[i].id) to player \(assignedPlayerID) at \(assignedPlayer.position)")
+                }
+            }
+        }
     }
 
     @ViewBuilder

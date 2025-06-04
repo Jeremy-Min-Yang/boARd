@@ -562,6 +562,7 @@ struct SavedPlaysScreen: View {
                             }
                             .padding(.horizontal)
                         }
+                        .padding(.bottom, 60)
                     }
                 }
                 .frame(maxWidth: .infinity)
