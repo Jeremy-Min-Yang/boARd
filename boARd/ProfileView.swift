@@ -138,7 +138,8 @@ struct ProfileView: View {
                         positionsBySport: positionsBySport,
                         isSaving: $isSaving,
                         errorMessage: $errorMessage,
-                        onSave: saveProfile
+                        onSave: saveProfile,
+                        isPresented: $showEditSheet
                     )
                     .frame(maxWidth: 400, maxHeight: 500)
                     .background(Color(.systemBackground))
@@ -236,41 +237,50 @@ struct EditProfileSheet: View {
     @Binding var isSaving: Bool
     @Binding var errorMessage: String?
     var onSave: () -> Void
+    @Binding var isPresented: Bool
 
     var currentPositions: [String] {
         positionsBySport[selectedSport] ?? ["Coach"]
     }
 
     var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Profile Info")) {
-                    TextField("Name", text: $name)
-                    Picker("Sport", selection: $selectedSport) {
-                        ForEach(sports, id: \.self) { sport in
-                            Text(sport)
-                        }
+        Form {
+            Section(header: Text("Profile Info")) {
+                TextField("Name", text: $name)
+                Picker("Sport", selection: $selectedSport) {
+                    ForEach(sports, id: \.self) { sport in
+                        Text(sport)
                     }
-                    Picker("Position", selection: $selectedPosition) {
-                        ForEach(currentPositions, id: \.self) { position in
-                            Text(position)
-                        }
-                    }
-                    TextField("Team ID (Optional)", text: $teamID)
                 }
-                if let error = errorMessage {
-                    Section {
-                        Text(error)
-                            .foregroundColor(.red)
+                Picker("Position", selection: $selectedPosition) {
+                    ForEach(currentPositions, id: \.self) { position in
+                        Text(position)
                     }
+                }
+                TextField("Team ID (Optional)", text: $teamID)
+            }
+            if let error = errorMessage {
+                Section {
+                    Text(error)
+                        .foregroundColor(.red)
                 }
             }
-            .navigationBarTitle("Edit Profile", displayMode: .inline)
-            .navigationBarItems(leading: Button("Cancel") {
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-            }, trailing: Button(isSaving ? "Saving..." : "Save") {
-                if !isSaving { onSave() }
-            }.disabled(isSaving || name.isEmpty))
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Cancel") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    self.isPresented = false
+                }
+            }
+            ToolbarItem(placement: .principal) {
+                Text("Edit Profile").font(.headline)
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(isSaving ? "Saving..." : "Save") {
+                    if !isSaving { onSave() }
+                }.disabled(isSaving || name.isEmpty)
+            }
         }
         .onChange(of: selectedSport) { newSport in
             if !currentPositions.contains(selectedPosition) {

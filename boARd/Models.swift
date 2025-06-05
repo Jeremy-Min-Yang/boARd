@@ -2,9 +2,62 @@ import SwiftUI
 
 // MARK: - Enums
 
-enum CourtType {
-    case full
-    case half
+enum CourtType: String, CaseIterable, Identifiable, Codable {
+    case full = "Full Court"
+    case half = "Half Court"
+    // Add other cases if you have them e.g. custom, etc.
+
+    var id: String { self.rawValue }
+
+    // Provides the name of the image asset for this court type
+    var imageName: String {
+        switch self {
+        case .full:
+            return "full_court" // Ensure you have an image named "full_court" in your assets
+        case .half:
+            return "half_court" // Ensure you have an image named "half_court" in your assets
+        // Add cases for other court types if necessary
+        }
+    }
+
+    // Calculates the size of the court for PDF rendering or display,
+    // maintaining aspect ratio based on the provided container size.
+    func size(for containerSize: CGSize) -> CGSize {
+        let aspectRatio: CGFloat
+        switch self {
+        case .full:
+            // Example aspect ratio for a full court (e.g., 94ft long by 50ft wide -> 94/50)
+            // Or use the aspect ratio of your actual court image if that's more representative.
+            aspectRatio = 94.0 / 50.0 
+        case .half:
+            // Example aspect ratio for a half court (e.g., 47ft long by 50ft wide -> 47/50)
+            aspectRatio = 47.0 / 50.0
+        // Add cases for other court types if necessary
+        }
+
+        // Calculate dimensions to fit within the containerSize while maintaining aspect ratio
+        let containerAspectRatio = containerSize.width / containerSize.height
+        var newWidth = containerSize.width
+        var newHeight = containerSize.height
+
+        if containerAspectRatio > aspectRatio {
+            // Container is wider than the court's aspect ratio (letterboxed top/bottom)
+            newWidth = newHeight * aspectRatio
+        } else {
+            // Container is taller or same aspect ratio (pillarboxed left/right)
+            newHeight = newWidth / aspectRatio
+        }
+        return CGSize(width: newWidth, height: newHeight)
+    }
+    
+    var virtualCourtSize: CGSize {
+        switch self {
+        case .full:
+            return CGSize(width: 940, height: 500) // Example: 94ft x 50ft scaled up
+        case .half:
+            return CGSize(width: 470, height: 500) // Example: 47ft x 50ft scaled up
+        }
+    }
 }
 
 enum TouchInputType {
@@ -140,17 +193,6 @@ struct PlayerAnimationData {
     let totalDistance: CGFloat
     let startTime: Date
     let duration: TimeInterval
-}
-
-extension CourtType {
-    var virtualCourtSize: CGSize {
-        switch self {
-        case .full:
-            return CGSize(width: 1072, height: 569)
-        case .half:
-            return CGSize(width: 700, height: 855)
-        }
-    }
 }
 
 // MARK: - Virtual/Screen Coordinate Mapping

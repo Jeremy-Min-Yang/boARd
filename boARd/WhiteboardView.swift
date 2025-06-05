@@ -7,6 +7,7 @@ import FirebaseAuth
 
 // Now modify the main WhiteboardView to use these components
 struct WhiteboardView: View {
+    @EnvironmentObject var authViewModel: AuthViewModel // Added AuthViewModel
     let courtType: CourtType
     var playToLoad: Models.SavedPlay? = nil
     var isEditable: Bool = true // Default to true (for new plays)
@@ -95,6 +96,11 @@ struct WhiteboardView: View {
     // Add state for Save As dialog
     @State private var showingSaveAsAlert = false
     
+    // State variables for PDF export and sharing
+    @State private var showingShareSheet = false
+    @State private var shareablePDFURL: URL?
+    @State private var courtDrawingAreaSize: CGSize = .zero // For PDF export geometry
+    
     @Environment(\.presentationMode) var presentationMode
     @State private var showExitAlert = false
     @State private var showSaveErrorAlert = false
@@ -115,183 +121,230 @@ struct WhiteboardView: View {
     @State private var isAssigningBall = false
     @State private var selectedBasketballIndex: Int? = nil
 
+    // Computed property for the navigation title
+    private var currentPlayTitle: String {
+        playToLoad?.name ?? (playNameInput.isEmpty ? "New Play" : playNameInput)
+    }
+
+    // Extracted view for playback mode
+    @ViewBuilder
+    private func playbackModeView(geometry: GeometryProxy) -> some View {
+        if pathConnectionCount > 0 {
+            VStack(spacing: 0) {
+                // Playback controls and court content
+                HStack(spacing: 12) {
+                    Button(action: {
+                        if playbackState == .playing {
+                            pauseAnimation()
+                        } else {
+                            startAnimation()
+                        }
+                    }) {
+                        Image(systemName: playbackState == .playing ? "pause.fill" : "play.fill")
+                            .font(.title2)
+                            .foregroundColor(playbackState == .playing ? .red : .green)
+                            .frame(width: 44, height: 44)
+                    }
+                    Slider(value: Binding(
+                        get: { playbackProgress },
+                        set: { newValue in
+                            playbackProgress = newValue
+                            setAnimationProgress(newValue)
+                        }
+                    ), in: 0...1, step: 0.001)
+                    .frame(maxWidth: 200)
+                    HStack {
+                        Text("0:00")
+                        Text("/")
+                        Text(animationDurationString())
+                    }
+                    .font(.caption)
+                }
+                .padding(.vertical, 12)
+                .background(Color(.secondarySystemBackground))
+                courtContentView(geometry: geometry)
+                    .padding(.top, 8)
+                Spacer().frame(height: 32)
+            }
+            .ignoresSafeArea(edges: .bottom)
+        } else {
+            // Show placeholder if no connected plays
+            VStack {
+                Spacer()
+                Text("No connected plays available for playback.")
+                    .font(.headline)
+                    .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+                    .padding()
+                courtContentView(geometry: geometry)
+                    .padding(.top, 8)
+                Spacer()
+            }
+            .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    // Extracted view for editable mode
+    @ViewBuilder
+    private func editableModeView(geometry: GeometryProxy) -> some View {
+        ZStack(alignment: .top) {
+            courtContentView(geometry: geometry)
+                .padding(.top, 61)
+            VStack(spacing: 0) {
+                // Save status indicator in top right above toolbar
+                HStack {
+                    Spacer()
+                    if isDirty {
+                        Text("Unsaved changes")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .padding(6)
+                            .background(Color.white)
+                            .cornerRadius(8)
+                            .padding(.trailing, 12)
+                    } else {
+                        Text("All changes saved")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                            .padding(6)
+                            .background(Color.white)
+                            .cornerRadius(8)
+                            .padding(.trailing, 12)
+                    }
+                }
+                .padding(.top, 4)
+                // Divider between nav bar and toolbar
+                Divider()
+                    .background(Color(.systemGray3))
+                HStack {
+                    ToolbarView(
+                        selectedTool: $selectedTool,
+                        selectedPenStyle: $selectedPenStyle,
+                        playbackState: $playbackState,
+                        isPathAssignmentMode: $isPathAssignmentMode,
+                        pathCount: pathConnectionCount,
+                        isEditable: isEditable,
+                        onAddPlayer: {
+                            isAddingPlayer = true
+                            isAddingBasketball = false
+                            isAddingOpponent = false
+                        },
+                        onAddBasketball: {
+                            isAddingBasketball = true
+                            isAddingPlayer = false
+                            isAddingOpponent = false
+                        },
+                        onAddOpponent: {
+                            isAddingOpponent = true
+                            isAddingPlayer = false
+                            isAddingBasketball = false
+                        },
+                        onUndo: {
+                            if let lastAction = actions.popLast() {
+                                switch lastAction {
+                                case .drawing:
+                                    if !drawings.isEmpty { drawings.removeLast() }
+                                case .basketball:
+                                    if !basketballs.isEmpty { basketballs.removeLast() }
+                                case .player:
+                                    if !players.isEmpty { players.removeLast() }
+                                case .opponent:
+                                    if !opponents.isEmpty { opponents.removeLast() }
+                                }
+                            }
+                        },
+                        onClear: { showClearConfirmation = true },
+                        onPlayAnimation: { startAnimation() },
+                        onPauseAnimation: { pauseAnimation() },
+                        onAssignPath: { togglePathAssignmentMode() },
+                        onAssignBall: {
+                            if !isAssigningBall {
+                                if isPathAssignmentMode {
+                                    isPathAssignmentMode = false
+                                }
+                                previousTool = selectedTool
+                                selectedTool = .move
+                                isAssigningBall = true
+                            } else {
+                                isAssigningBall = false
+                                if let prevTool = previousTool {
+                                    selectedTool = prevTool
+                                }
+                            }
+                            selectedBasketballIndex = nil
+                        },
+                        isAssigningBall: isAssigningBall,
+                        onToolChange: { tool in handleToolChange(tool) },
+                        onSave: {
+                            saveCurrentPlayImmediate()
+                        }
+                    )
+                    .padding(.vertical, 8)
+                    .background(Color.white)
+                    // Add Save As button next to Save
+                    Button(action: {
+                        print("Save As button tapped!")
+                        showingSaveAsAlert = true
+                    }) {
+                        Image(systemName: "square.and.arrow.down.on.square")
+                            .font(.title2)
+                            .accessibilityLabel("Save As")
+                    }
+                    .padding(.trailing, 8)
+                }
+                Divider().background(Color(.systemGray3))
+                // Show instructions when assigning ball
+                if isAssigningBall {
+                    Text("Choose a player to connect the basketball to")
+                        .font(.footnote)
+                        .foregroundColor(.gray)
+                        .padding(.top, 4)
+                }
+            }
+        }
+    }
+
     var body: some View {
         GeometryReader { geometry in
             if !isEditable {
-                if pathConnectionCount > 0 {
-                    VStack(spacing: 0) {
-                        // Playback controls and court content
-                        HStack(spacing: 12) {
-                            Button(action: {
-                                if playbackState == .playing {
-                                    pauseAnimation()
-                                } else {
-                                    startAnimation()
-                                }
-                            }) {
-                                Image(systemName: playbackState == .playing ? "pause.fill" : "play.fill")
-                                    .font(.title2)
-                                    .foregroundColor(playbackState == .playing ? .red : .green)
-                                    .frame(width: 44, height: 44)
-                            }
-                            Slider(value: Binding(
-                                get: { playbackProgress },
-                                set: { newValue in
-                                    playbackProgress = newValue
-                                    setAnimationProgress(newValue)
-                                }
-                            ), in: 0...1, step: 0.001)
-                            .frame(maxWidth: 200)
-                            HStack {
-                                Text("0:00")
-                                Text("/")
-                                Text(animationDurationString())
-                            }
-                            .font(.caption)
-                        }
-                        .padding(.vertical, 12)
-                        .background(Color(.secondarySystemBackground))
-                        courtContentView(geometry: geometry)
-                            .padding(.top, 8)
-                        Spacer().frame(height: 32)
-                    }
-                    .ignoresSafeArea(edges: .bottom)
-                } else {
-                    // Show placeholder if no connected plays
-                    VStack {
-                        Spacer()
-                        Text("No connected plays available for playback.")
-                            .font(.headline)
-                            .foregroundColor(.gray)
-                            .multilineTextAlignment(.center)
-                            .padding()
-                        courtContentView(geometry: geometry)
-                            .padding(.top, 8)
-                        Spacer()
-                    }
-                    .ignoresSafeArea(edges: .bottom)
-                }
+                playbackModeView(geometry: geometry)
             } else {
-                ZStack(alignment: .top) {
-                    courtContentView(geometry: geometry)
-                        .padding(.top, 61)
-                    VStack(spacing: 0) {
-                        // Save status indicator in top right above toolbar
-                        HStack {
-                            Spacer()
-                            if isDirty {
-                                Text("Unsaved changes")
-                                    .font(.caption)
-                                    .foregroundColor(.orange)
-                                    .padding(6)
-                                    .background(Color.white)
-                                    .cornerRadius(8)
-                                    .padding(.trailing, 12)
-                            } else {
-                                Text("All changes saved")
-                                    .font(.caption)
-                                    .foregroundColor(.green)
-                                    .padding(6)
-                                    .background(Color.white)
-                                    .cornerRadius(8)
-                                    .padding(.trailing, 12)
-                            }
+                editableModeView(geometry: geometry)
+            }
+        }
+        .navigationTitle(currentPlayTitle)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    if isDirty {
+                        showExitAlert = true
+                    } else {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }) {
+                    Image(systemName: "chevron.backward")
+                    Text("Back")
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) { // Export Button Updated
+                if isEditable {
+                    Button(action: {
+                        // The `geometry` variable from the GeometryReader in the body should be in scope here.
+                        if let pdfURL = generatePlayPDF(courtContentSwiftUISize: self.courtDrawingAreaSize) { 
+                            self.shareablePDFURL = pdfURL
+                            self.showingShareSheet = true
+                            print("[Toolbar Export] PDF URL received: \(pdfURL). Attempting to show share sheet.")
+                        } else {
+                            print("[Toolbar Export] generatePlayPDF returned nil. Share sheet will not be shown currently.")
+                            // Optionally show an alert to the user if PDF generation fails later
                         }
-                        .padding(.top, 4)
-                        // Divider between nav bar and toolbar
-                        Divider()
-                            .background(Color(.systemGray3))
-                        HStack {
-                            ToolbarView(
-                                selectedTool: $selectedTool,
-                                selectedPenStyle: $selectedPenStyle,
-                                playbackState: $playbackState,
-                                isPathAssignmentMode: $isPathAssignmentMode,
-                                pathCount: pathConnectionCount,
-                                isEditable: isEditable,
-                                onAddPlayer: {
-                                    isAddingPlayer = true
-                                    isAddingBasketball = false
-                                    isAddingOpponent = false
-                                },
-                                onAddBasketball: {
-                                    isAddingBasketball = true
-                                    isAddingPlayer = false
-                                    isAddingOpponent = false
-                                },
-                                onAddOpponent: {
-                                    isAddingOpponent = true
-                                    isAddingPlayer = false
-                                    isAddingBasketball = false
-                                },
-                                onUndo: {
-                                    if let lastAction = actions.popLast() {
-                                        switch lastAction {
-                                        case .drawing:
-                                            if !drawings.isEmpty { drawings.removeLast() }
-                                        case .basketball:
-                                            if !basketballs.isEmpty { basketballs.removeLast() }
-                                        case .player:
-                                            if !players.isEmpty { players.removeLast() }
-                                        case .opponent:
-                                            if !opponents.isEmpty { opponents.removeLast() }
-                                        }
-                                    }
-                                },
-                                onClear: { showClearConfirmation = true },
-                                onPlayAnimation: { startAnimation() },
-                                onPauseAnimation: { pauseAnimation() },
-                                onAssignPath: { togglePathAssignmentMode() },
-                                onAssignBall: {
-                                    if !isAssigningBall {
-                                        if isPathAssignmentMode {
-                                            isPathAssignmentMode = false
-                                        }
-                                        previousTool = selectedTool
-                                        selectedTool = .move
-                                        isAssigningBall = true
-                                    } else {
-                                        isAssigningBall = false
-                                        if let prevTool = previousTool {
-                                            selectedTool = prevTool
-                                        }
-                                    }
-                                    selectedBasketballIndex = nil
-                                },
-                                isAssigningBall: isAssigningBall,
-                                onToolChange: { tool in handleToolChange(tool) },
-                                onSave: {
-                                    saveCurrentPlayImmediate()
-                                }
-                            )
-                            .padding(.vertical, 8)
-                            .background(Color.white)
-                            // Add Save As button next to Save
-                            Button(action: {
-                                print("Save As button tapped!")
-                                showingSaveAsAlert = true
-                            }) {
-                                Image(systemName: "square.and.arrow.down.on.square")
-                                    .font(.title2)
-                                    .accessibilityLabel("Save As")
-                            }
-                            .padding(.trailing, 8)
-                        }
-                        Divider().background(Color(.systemGray3))
-                        // Show instructions when assigning ball
-                        if isAssigningBall {
-                            Text("Choose a player to connect the basketball to")
-                                .font(.footnote)
-                                .foregroundColor(.gray)
-                                .padding(.top, 4)
-                        }
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
                     }
                 }
             }
         }
-        .navigationTitle(courtType == .full ? "Full Court" : "Half Court")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
         .alert("Player Limit Reached", isPresented: $showPlayerLimitAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -321,6 +374,21 @@ struct WhiteboardView: View {
         .sheet(isPresented: $showingSaveAsAlert) {
             SavePlaySheet(playNameInput: $playNameInput) {
                 saveAsNewPlay()
+            }
+        }
+        .sheet(isPresented: $showingShareSheet, onDismiss: { // Share sheet presentation
+            // Optionally, clean up the temporary PDF file if needed
+            if let url = shareablePDFURL {
+                try? FileManager.default.removeItem(at: url)
+                shareablePDFURL = nil // Reset for next time
+            }
+        }) {
+            if let url = shareablePDFURL {
+                ShareSheet(activityItems: [url])
+            } else {
+                // Placeholder content or Text("Preparing PDF...") while URL is nil
+                // For now, just an empty view if URL is nil, ShareSheet handles empty activityItems gracefully too.
+                ShareSheet(activityItems: [])
             }
         }
         .onAppear {
@@ -385,22 +453,6 @@ struct WhiteboardView: View {
                     showDraftRecoveryAlert = false
                 })
             )
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: {
-                    if isDirty {
-                        showExitAlert = true
-                    } else {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                }) {
-                    HStack {
-                        Image(systemName: "chevron.left")
-                        Text("Back")
-                    }
-                }
-            }
         }
     }
     
@@ -1697,6 +1749,7 @@ struct WhiteboardView: View {
                 self.showingSaveAlert = false // Dismiss sheet
                 self.isDirty = false // Mark as not dirty
                 self.deleteDraft() // Clear any auto-saved draft for this play
+                NotificationCenter.default.post(name: NSNotification.Name("PlaySavedNotification"), object: nil)
                 // If this was editing an existing play, playToLoad should be updated or reloaded
                 // If it was a new play, we might want to set playToLoad to this newPlay
                 // For simplicity, we can rely on a list refresh or similar mechanism for now.
@@ -1961,6 +2014,7 @@ struct WhiteboardView: View {
                 // Potentially update playToLoad to this new play if the user continues editing
                 // self.playToLoad = newPlay 
                 self.deleteDraft() // Clear any auto-saved draft for a new play
+                NotificationCenter.default.post(name: NSNotification.Name("PlaySavedNotification"), object: nil)
             }
         }
     }
@@ -2009,6 +2063,7 @@ struct WhiteboardView: View {
                 print("Play '\(name)' saved immediately. ID: \(newPlay.id), TeamID: \(teamID ?? "None")")
                 self.isDirty = false
                 self.deleteDraft()
+                NotificationCenter.default.post(name: NSNotification.Name("PlaySavedNotification"), object: nil)
                 onSuccess?()
             }
         }
@@ -2081,6 +2136,229 @@ struct WhiteboardView: View {
 
     func loadPlay(play: Models.SavedPlay) {
         // ... existing code ...
+    }
+
+    // MARK: - PDF Generation (Shell - Step 2a-i)
+    private func generatePlayPDF(courtContentSwiftUISize: CGSize) -> URL? {
+        let pdfMetaData = [
+            kCGPDFContextCreator: "boARd App",
+            // Use the displayName property directly from AuthViewModel
+            kCGPDFContextAuthor: self.authViewModel.displayName, 
+            kCGPDFContextTitle: playToLoad?.name ?? (playNameInput.isEmpty ? "New Play" : playNameInput)
+        ]
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = pdfMetaData as [String: Any]
+
+        // Determine PDF page size based on the court aspect ratio and the view's geometry
+        // This ensures the PDF page has the same aspect ratio as the court displayed on screen.
+        let courtRenderSizeForPDF = courtType.size(for: courtContentSwiftUISize) // Use the passed-in size
+        let pdfWidth = courtRenderSizeForPDF.width
+        let pdfHeight = courtRenderSizeForPDF.height
+        let pageRect = CGRect(x: 0, y: 0, width: pdfWidth, height: pdfHeight)
+
+        let tempDir = FileManager.default.temporaryDirectory
+        // Use play ID in filename if available, otherwise a new UUID for unsaved plays
+        let fileName = "play_\(playToLoad?.id.uuidString ?? UUID().uuidString).pdf"
+        let pdfURL = tempDir.appendingPathComponent(fileName)
+
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
+
+        do {
+            try renderer.writePDF(to: pdfURL) { rendererContext in // Renamed for clarity
+                rendererContext.beginPage() 
+                let cgContext = rendererContext.cgContext // Explicitly get CGContext
+
+                // 1. Draw Court Background Image
+                if let courtImage = UIImage(named: courtType.imageName) { 
+                    courtImage.draw(in: pageRect)
+                } else {
+                    // print(\"[generatePlayPDF] Error: Court background image '\\(courtType.imageName)\' not found.\") // Removed print
+                    UIColor.lightGray.setFill()
+                    cgContext.fill(pageRect) 
+                }
+                // courtContentSwiftUISize is now passed directly to this function
+
+                // 2. Draw Players (Pass cgContext)
+                players.forEach { playerItem in
+                    drawPlayerForPDF(player: playerItem, context: cgContext, pdfPageRect: pageRect, courtContentSwiftUISize: courtContentSwiftUISize)
+                }
+
+                // 3. Draw Opponents (Pass cgContext)
+                opponents.forEach { opponentItem in
+                    drawOpponentForPDF(opponent: opponentItem, context: cgContext, pdfPageRect: pageRect, courtContentSwiftUISize: courtContentSwiftUISize)
+                }
+
+                // 4. Draw Basketballs (Pass cgContext)
+                basketballs.forEach { basketballItem in
+                    drawBasketballForPDF(basketball: basketballItem, context: cgContext, pdfPageRect: pageRect, courtContentSwiftUISize: courtContentSwiftUISize)
+                }
+                
+                // 5. Draw Drawings (Paths and Arrows) (Pass cgContext)
+                drawings.forEach { drawingItem in
+                    drawDrawingForPDF(drawing: drawingItem, context: cgContext, pdfPageRect: pageRect, courtContentSwiftUISize: courtContentSwiftUISize)
+                }
+
+            } // This closes the renderer.writePDF trailing closure.
+            
+            // print("[generatePlayPDF] Successfully generated PDF (with all elements) at: \(pdfURL)") // Removed print
+            return pdfURL
+            
+        } catch { // This is the catch block for the do-statement
+            // print("[generatePlayPDF] Error generating PDF: \(error.localizedDescription)") // Removed print
+            return nil
+        } // This closes the generatePlayPDF function
+    }
+
+    // Helper function to draw a single player onto the PDF
+    // Updated to accept CGContext directly
+    private func drawPlayerForPDF(player: PlayerCircle, context cgContext: CGContext, pdfPageRect: CGRect, courtContentSwiftUISize: CGSize) {
+        let playerSizeOnPDF: CGFloat = 20 
+        
+        let scaledX = (player.position.x / courtContentSwiftUISize.width) * pdfPageRect.width
+        let scaledY = (player.position.y / courtContentSwiftUISize.height) * pdfPageRect.height
+        let positionOnPDF = CGPoint(x: scaledX, y: scaledY)
+
+        cgContext.setFillColor(player.color.cgColor ?? UIColor.black.cgColor) 
+        
+        let playerRect = CGRect(x: positionOnPDF.x - playerSizeOnPDF / 2,
+                                y: positionOnPDF.y - playerSizeOnPDF / 2,
+                                width: playerSizeOnPDF, 
+                                height: playerSizeOnPDF)
+        cgContext.fillEllipse(in: playerRect)
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 12), 
+            .foregroundColor: UIColor.white 
+        ]
+        let numberString = NSAttributedString(string: "\(player.number)", attributes: attributes)
+        let stringSize = numberString.size()
+        
+        let textRect = CGRect(x: positionOnPDF.x - stringSize.width / 2,
+                              y: positionOnPDF.y - stringSize.height / 2,
+                              width: stringSize.width,
+                              height: stringSize.height)
+        numberString.draw(in: textRect)
+    }
+
+    // Helper function to draw a single opponent onto the PDF
+    // Updated to accept CGContext directly
+    private func drawOpponentForPDF(opponent: OpponentCircle, context cgContext: CGContext, pdfPageRect: CGRect, courtContentSwiftUISize: CGSize) {
+        let opponentSizeOnPDF: CGFloat = 20 
+        
+        let scaledX = (opponent.position.x / courtContentSwiftUISize.width) * pdfPageRect.width
+        let scaledY = (opponent.position.y / courtContentSwiftUISize.height) * pdfPageRect.height
+        let positionOnPDF = CGPoint(x: scaledX, y: scaledY)
+
+        cgContext.setFillColor(opponent.color.cgColor ?? UIColor.red.cgColor) 
+        
+        let opponentRect = CGRect(x: positionOnPDF.x - opponentSizeOnPDF / 2,
+                                  y: positionOnPDF.y - opponentSizeOnPDF / 2,
+                                  width: opponentSizeOnPDF,
+                                  height: opponentSizeOnPDF)
+        cgContext.fillEllipse(in: opponentRect)
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 14, weight: .bold), 
+            .foregroundColor: UIColor.white 
+        ]
+        let xString = NSAttributedString(string: "X", attributes: attributes)
+        let stringSize = xString.size()
+        
+        let textRect = CGRect(x: positionOnPDF.x - stringSize.width / 2,
+                              y: positionOnPDF.y - stringSize.height / 2,
+                              width: stringSize.width,
+                              height: stringSize.height)
+        xString.draw(in: textRect)
+    }
+
+    // Helper function to draw a single basketball onto the PDF
+    // Updated to accept CGContext directly
+    private func drawBasketballForPDF(basketball: BasketballItem, context cgContext: CGContext, pdfPageRect: CGRect, courtContentSwiftUISize: CGSize) {
+        let ballSizeOnPDF: CGFloat = 15 
+        
+        let scaledX = (basketball.position.x / courtContentSwiftUISize.width) * pdfPageRect.width
+        let scaledY = (basketball.position.y / courtContentSwiftUISize.height) * pdfPageRect.height
+        let positionOnPDF = CGPoint(x: scaledX, y: scaledY)
+
+        if let ballImage = UIImage(named: "basketball_icon") { 
+            let imageRect = CGRect(x: positionOnPDF.x - ballSizeOnPDF / 2,
+                                   y: positionOnPDF.y - ballSizeOnPDF / 2,
+                                   width: ballSizeOnPDF,
+                                   height: ballSizeOnPDF)
+            ballImage.draw(in: imageRect)
+        } else {
+            cgContext.setFillColor(UIColor.orange.cgColor)
+            let ballRect = CGRect(x: positionOnPDF.x - ballSizeOnPDF / 2,
+                                  y: positionOnPDF.y - ballSizeOnPDF / 2,
+                                  width: ballSizeOnPDF,
+                                  height: ballSizeOnPDF)
+            cgContext.fillEllipse(in: ballRect)
+            if debugMode { 
+                print("[drawBasketballForPDF] Warning: 'basketball_icon' not found in assets. Drawing a default orange circle.")
+            }
+        }
+    }
+
+    // Helper function to draw a Drawing (line or arrow) onto the PDF
+    // Updated to accept CGContext directly
+    private func drawDrawingForPDF(drawing: Drawing, context cgContext: CGContext, pdfPageRect: CGRect, courtContentSwiftUISize: CGSize) {
+        guard !drawing.points.isEmpty else { return }
+        
+        cgContext.setStrokeColor(drawing.color.cgColor ?? UIColor.black.cgColor) 
+        cgContext.setLineWidth(drawing.lineWidth) 
+        cgContext.setLineCap(.round)
+        cgContext.setLineJoin(.round)
+
+        let path = CGMutablePath()
+        let firstScaledPoint = CGPoint(x: (drawing.points[0].x / courtContentSwiftUISize.width) * pdfPageRect.width, 
+                                       y: (drawing.points[0].y / courtContentSwiftUISize.height) * pdfPageRect.height)
+        path.move(to: firstScaledPoint)
+
+        for i in 1..<drawing.points.count {
+            let scaledPoint = CGPoint(x: (drawing.points[i].x / courtContentSwiftUISize.width) * pdfPageRect.width, 
+                                      y: (drawing.points[i].y / courtContentSwiftUISize.height) * pdfPageRect.height)
+            path.addLine(to: scaledPoint)
+        }
+        cgContext.addPath(path) 
+        cgContext.strokePath()  
+
+        if drawing.type == .arrow, drawing.points.count >= 2 {
+            let startPointOriginal = drawing.points[drawing.points.count - 2] 
+            let endPointOriginal = drawing.points.last!                         
+            
+            let startPointScaled = CGPoint(x: (startPointOriginal.x / courtContentSwiftUISize.width) * pdfPageRect.width, 
+                                         y: (startPointOriginal.y / courtContentSwiftUISize.height) * pdfPageRect.height)
+            let endPointScaled = CGPoint(x: (endPointOriginal.x / courtContentSwiftUISize.width) * pdfPageRect.width, 
+                                       y: (endPointOriginal.y / courtContentSwiftUISize.height) * pdfPageRect.height)
+            
+            let arrowHeadSize = drawing.lineWidth * 3.0 
+            drawArrowheadForPDF(context: cgContext, start: startPointScaled, end: endPointScaled, color: drawing.color, arrowSize: arrowHeadSize)
+        }
+    }
+    
+    // Helper function to draw an arrowhead for arrows on the PDF
+    // Updated to accept CGContext directly
+    private func drawArrowheadForPDF(context cgContext: CGContext, start: CGPoint, end: CGPoint, color: Color, arrowSize: CGFloat) {
+        cgContext.setStrokeColor(color.cgColor ?? UIColor.black.cgColor) 
+        cgContext.setFillColor(color.cgColor ?? UIColor.black.cgColor)   
+        cgContext.setLineWidth(1.0) 
+
+        let angle = atan2(end.y - start.y, end.x - start.x)
+        let angleAdjustment = CGFloat.pi / 6
+
+        let p1 = CGPoint(x: end.x - arrowSize * cos(angle - angleAdjustment),
+                         y: end.y - arrowSize * sin(angle - angleAdjustment))
+        let p2 = CGPoint(x: end.x - arrowSize * cos(angle + angleAdjustment),
+                         y: end.y - arrowSize * sin(angle + angleAdjustment))
+
+        let arrowheadPath = CGMutablePath()
+        arrowheadPath.move(to: end)      
+        arrowheadPath.addLine(to: p1)    
+        arrowheadPath.addLine(to: p2)    
+        arrowheadPath.closeSubpath()     
+
+        cgContext.addPath(arrowheadPath)
+        cgContext.fillPath() 
     }
 }
 

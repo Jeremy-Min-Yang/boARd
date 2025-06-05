@@ -9,16 +9,21 @@ class AuthViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var hasCompletedOnboarding = false
     @Published var justSignedUp = false
+    @Published var displayName: String = "Guest"
     private var handle: AuthStateDidChangeListenerHandle?
     private let db = Firestore.firestore()
     
     init() {
         handle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             self?.user = user
+            self?.fetchDisplayNameForUser(user)
             if let user = user {
                 // User is signed in or was already signed in
                 print("Auth state changed, user: \(user.uid). Fetching team ID.")
                 UserService.shared.fetchAndUpdateUserTeamIDFromFirestore()
+            } else {
+                // User is nil (logged out)
+                print("Auth state changed, user is nil (logged out).")
             }
         }
     }
@@ -148,6 +153,36 @@ class AuthViewModel: ObservableObject {
                 completion(true)
             } else {
                 completion(false)
+            }
+        }
+    }
+
+    private func fetchDisplayNameForUser(_ user: User?) {
+        guard let authenticatedUser = user else {
+            self.displayName = "Guest"
+            return
+        }
+
+        if authenticatedUser.isAnonymous {
+            self.displayName = "Guest"
+        } else {
+            // Fetch name from Firestore for non-anonymous users
+            db.collection("users").document(authenticatedUser.uid).getDocument { [weak self] snapshot, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        print("Error fetching user profile for display name: \(error.localizedDescription)")
+                        self?.displayName = "User" // Fallback in case of error
+                        return
+                    }
+                    
+                    if let data = snapshot?.data(), let name = data["name"] as? String, !name.isEmpty {
+                        self?.displayName = name
+                    } else {
+                        // Fallback if no name field, or if name is empty, or if document doesn't exist
+                        print("User profile name not found or empty for UID: \(authenticatedUser.uid). Defaulting to 'User'.")
+                        self?.displayName = "User" 
+                    }
+                }
             }
         }
     }

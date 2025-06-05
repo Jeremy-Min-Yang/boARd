@@ -2,13 +2,13 @@ import SwiftUI
 import FirebaseAuth
 
 struct HomeScreen: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
     @Binding var showARSheet: Bool
     @Binding var arPlay: Models.SavedPlay?
     @State private var selectedTab: MainTab = .home
     @State private var showCourtOptions = false
     @State private var selectedCourtType: CourtType?
     @State private var navigateToWhiteboard = false
-    @State private var savedPlays: [Models.SavedPlay] = []
     @State private var selectedPlay: Models.SavedPlay?
     @State private var editMode = false
     @State private var viewOnlyMode = false
@@ -21,6 +21,12 @@ struct HomeScreen: View {
     @State private var isLoadingTeamPlaysForHome: Bool = false
     @State private var teamPlaysErrorForHome: String? = nil
     @State private var currentTeamIDForHome: String? = nil
+
+    // Alert state hoisted from SavedPlaysScreen
+    @State private var playToDeleteInHomeScreen: Models.SavedPlay? = nil
+    @State private var showDeleteConfirmationInHomeScreen: Bool = false
+    // Keep a reference to savedPlays in HomeScreen to pass to SavedPlaysScreen's deletePlay
+    @State private var homeScreenSavedPlays: [Models.SavedPlay] = []
 
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -42,7 +48,7 @@ struct HomeScreen: View {
                             .padding(.top, 8)
                         HStack {
                             Spacer()
-                            Text("Welcome back, Coach!")
+                            Text("Welcome back, \(authViewModel.displayName)!")
                                 .font(.title3)
                                 .foregroundColor(.secondary)
                             Spacer()
@@ -52,11 +58,11 @@ struct HomeScreen: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Recent Plays")
                                 .font(.headline)
-                            if savedPlays.isEmpty {
+                            if homeScreenSavedPlays.isEmpty {
                                 Text("No recent plays yet.")
                                     .foregroundColor(.gray)
                             } else {
-                                ForEach(savedPlays.prefix(3)) { play in
+                                ForEach(homeScreenSavedPlays.prefix(3)) { play in
                                     Button(action: {
                                         selectedPlay = play
                                         editMode = false
@@ -150,7 +156,7 @@ struct HomeScreen: View {
                     .padding(.horizontal, 20)
                     .onAppear {
                         // Load local "Recent Plays"
-                        savedPlays = SavedPlayService.shared.loadPlaysLocally()
+                        homeScreenSavedPlays = SavedPlayService.shared.loadPlaysLocally()
                             .sorted { $0.lastModified > $1.lastModified }
                         
                         // Load "My Team Plays" for the home screen
@@ -175,8 +181,17 @@ struct HomeScreen: View {
                         viewOnlyMode: $viewOnlyMode,
                         navigateToWhiteboard: $navigateToWhiteboard,
                         showARSheet: $showARSheet,
-                        arPlay: $arPlay
+                        arPlay: $arPlay,
+                        // Pass bindings for hoisted alert state
+                        playToDeleteFromParent: $playToDeleteInHomeScreen,
+                        showDeleteConfirmationFromParent: $showDeleteConfirmationInHomeScreen,
+                        // Pass homeScreenSavedPlays for the deletePlay function context
+                        currentSavedPlays: $homeScreenSavedPlays 
                     )
+                    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PlaySavedNotification"))) { _ in
+                        print("[HomeScreen] Received PlaySavedNotification, reloading plays.")
+                        homeScreenSavedPlays = SavedPlayService.shared.loadPlaysLocally().sorted { $0.lastModified > $1.lastModified }
+                    }
                 case .profile:
                     ProfileView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -221,6 +236,23 @@ struct HomeScreen: View {
                 dismissButton: .default(Text("OK"))
             )
         }
+        // Moved alert for play deletion to HomeScreen
+        .alert(isPresented: $showDeleteConfirmationInHomeScreen) {
+            Alert(
+                title: Text("Delete Play"),
+                message: Text("Are you sure you want to delete '\(playToDeleteInHomeScreen?.name ?? "")'? This cannot be undone."),
+                primaryButton: .destructive(Text("Delete")) {
+                    if let play = playToDeleteInHomeScreen {
+                        // Call a delete function that can update homeScreenSavedPlays
+                        deletePlayFromHomeScreen(play: play)
+                    }
+                    playToDeleteInHomeScreen = nil
+                },
+                secondaryButton: .cancel {
+                    playToDeleteInHomeScreen = nil
+                }
+            )
+        }
     }
 
     func fetchTeamPlaysForHomeScreen() {
@@ -252,6 +284,17 @@ struct HomeScreen: View {
                     print("DEBUG HomeScreen: Error fetching team plays for home: \(error.localizedDescription)")
                 }
             }
+        }
+    }
+
+    func deletePlayFromHomeScreen(play: Models.SavedPlay) {
+        SavedPlayService.shared.deletePlayEverywhere(playID: play.id.uuidString) { _ in
+            // Refresh homeScreenSavedPlays after deletion
+            homeScreenSavedPlays = SavedPlayService.shared.loadPlaysLocally().sorted { $0.lastModified > $1.lastModified }
+            // Also ensure the list within SavedPlaysScreen (if it keeps its own copy) is updated
+            // This might require a more sophisticated state management or callback if SavedPlaysScreen
+            // doesn't directly use homeScreenSavedPlays for its ForEach.
+            // For the simplified version, SavedPlaysScreen will also use homeScreenSavedPlays.
         }
     }
 }
@@ -405,192 +448,184 @@ struct SavedPlaysScreen: View {
     @Binding var navigateToWhiteboard: Bool
     @Binding var showARSheet: Bool
     @Binding var arPlay: Models.SavedPlay?
-    @State private var savedPlays: [Models.SavedPlay] = []
+    
+    // Bindings for hoisted alert state & data from HomeScreen
+    @Binding var playToDeleteFromParent: Models.SavedPlay?
+    @Binding var showDeleteConfirmationFromParent: Bool
+    @Binding var currentSavedPlays: [Models.SavedPlay] // This is the source of truth for plays
+
+    // Local state for UI elements within SavedPlaysScreen
     @State private var syncStatus: String = ""
     @State private var isSyncing: Bool = false
     @State private var uploadingPlayID: UUID? = nil
     @State private var uploadSuccessPlayID: UUID? = nil
     @State private var showLoginAlert: Bool = false
-    @State private var playToDelete: Models.SavedPlay? = nil
-    @State private var showDeleteConfirmation: Bool = false
+
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter
     }()
+
     var body: some View {
-        ZStack {
-            Color(.systemBackground)
-                .edgesIgnoringSafeArea(.all)
+        ZStack { 
+            Color(.systemBackground).edgesIgnoringSafeArea(.all)
             VStack(spacing: 0) {
-                Text("Saved Plays")
+                Text("Saved Plays") // Restored title
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .padding(.top, 30)
                     .padding(.bottom, 20)
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("All Plays")
-                            .font(.headline)
-                            .padding(.horizontal)
+
+                // Restored Cloud Sync Section
+                VStack(alignment: .center, spacing: 8) {
+                    Text("Cloud Sync")
+                        .font(.headline)
+                        .padding(.top, 4)
+                    HStack(spacing: 16) {
                         Spacer()
-                    }
-                    // --- Cloud Sync Section ---
-                    VStack(alignment: .center, spacing: 8) {
-                        Text("Cloud Sync")
-                            .font(.headline)
-                            .padding(.top, 4)
-                        HStack(spacing: 16) {
-                            Spacer()
-                            Button(action: {
-                                isSyncing = true
-                                syncStatus = "Syncing..."
-                                SavedPlayService.shared.downloadAllCloudPlaysToLocal { error in
-                                    DispatchQueue.main.async {
-                                        isSyncing = false
-                                        if let error = error {
-                                            syncStatus = "Download failed: \(error.localizedDescription)"
-                                        } else {
-                                            syncStatus = "Downloaded from cloud!"
-                                            savedPlays = SavedPlayService.shared.loadPlaysLocally().sorted { $0.lastModified > $1.lastModified }
-                                        }
+                        Button(action: {
+                            isSyncing = true
+                            syncStatus = "Syncing..."
+                            SavedPlayService.shared.downloadAllCloudPlaysToLocal { error in
+                                DispatchQueue.main.async {
+                                    isSyncing = false
+                                    if let error = error {
+                                        syncStatus = "Download failed: \(error.localizedDescription)"
+                                    } else {
+                                        syncStatus = "Downloaded from cloud!"
+                                        // HomeScreen will update currentSavedPlays, which will reflect here
+                                        // No need to manually reload here if currentSavedPlays is the source
                                     }
                                 }
-                            }) {
-                                Label("Sync from Cloud", systemImage: "icloud.and.arrow.down")
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.green.opacity(0.12))
-                                    .foregroundColor(.green)
-                                    .cornerRadius(10)
                             }
-                            .disabled(isSyncing)
-                            Spacer()
+                        }) {
+                            Label("Sync from Cloud", systemImage: "icloud.and.arrow.down")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.green.opacity(0.12))
+                                .foregroundColor(.green)
+                                .cornerRadius(10)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 4)
-                        if !syncStatus.isEmpty {
-                            Text(syncStatus)
-                                .font(.caption)
-                                .foregroundColor(syncStatus.contains("failed") ? .red : .green)
-                                .padding(.top, 2)
-                        }
+                        .disabled(isSyncing)
+                        Spacer()
                     }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color.gray.opacity(0.25), lineWidth: 1.5)
-                            .background(Color(.systemBackground).opacity(0.8).cornerRadius(16))
-                    )
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                    if savedPlays.isEmpty {
-                        VStack(spacing: 20) {
-                            Spacer()
-                            Image(systemName: "basketball")
-                                .font(.system(size: 50))
-                                .foregroundColor(.gray)
-                            Text("No saved plays yet")
-                                .font(.title3)
-                                .foregroundColor(.gray)
-                            Text("Create a new whiteboard to get started.")
-                                .foregroundColor(.gray)
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 50)
-                    } else {
-                        ScrollView {
-                            LazyVStack(spacing: 12) {
-                                ForEach(savedPlays) { play in
-                                    SavedPlayRow(
-                                        play: play,
-                                        dateFormatter: dateFormatter,
-                                        onEdit: {
-                                            selectedPlay = play
-                                            editMode = true
-                                            viewOnlyMode = false
-                                            navigateToWhiteboard = true
-                                        },
-                                        onView: {
-                                            selectedPlay = play
-                                            editMode = false
-                                            viewOnlyMode = true
-                                            navigateToWhiteboard = true
-                                        },
-                                        onAR: {
-                                            print("[DEBUG] onAR closure called for play: \(play.name)")
-                                            arPlay = play
-                                            showARSheet = true
-                                        },
-                                        onDelete: {
-                                            playToDelete = play
-                                            showDeleteConfirmation = true
-                                        },
-                                        onUpload: {
-                                            if Auth.auth().currentUser == nil {
-                                                uploadingPlayID = nil
-                                                uploadSuccessPlayID = nil
-                                                print("DEBUG: Tried to upload as guest. Auth.currentUser is nil.")
-                                                showLoginAlert = true
-                                                return
-                                            }
-                                            uploadingPlayID = play.id
-                                            uploadSuccessPlayID = nil
-                                            SavedPlayService.shared.savePlay(play, forUserID: Auth.auth().currentUser?.uid ?? "") { error in
-                                                DispatchQueue.main.async {
-                                                    uploadingPlayID = nil
-                                                    if error == nil {
-                                                        uploadSuccessPlayID = play.id
-                                                        // Hide checkmark after 1.5s
-                                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                                            uploadSuccessPlayID = nil
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        isUploading: uploadingPlayID == play.id,
-                                        uploadSuccess: uploadSuccessPlayID == play.id
-                                    )
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
-                        .padding(.bottom, 60)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 4)
+                    if !syncStatus.isEmpty {
+                        Text(syncStatus)
+                            .font(.caption)
+                            .foregroundColor(syncStatus.contains("failed") ? .red : .green)
+                            .padding(.top, 2)
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical)
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.gray.opacity(0.25), lineWidth: 1.5)
+                        .background(Color(.systemBackground).opacity(0.8).cornerRadius(16))
+                )
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+
+                if currentSavedPlays.isEmpty { // Use currentSavedPlays from binding
+                    VStack(spacing: 20) {
+                        Spacer()
+                        Image(systemName: "basketball")
+                            .font(.system(size: 50))
+                            .foregroundColor(.gray)
+                        Text("No saved plays yet")
+                            .font(.title3)
+                            .foregroundColor(.gray)
+                        Text("Create a new whiteboard to get started.")
+                            .foregroundColor(.gray)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 50)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(currentSavedPlays) { play in // Use currentSavedPlays
+                                SavedPlayRow(
+                                    play: play,
+                                    dateFormatter: dateFormatter,
+                                    onEdit: {
+                                        selectedPlay = play
+                                        editMode = true
+                                        viewOnlyMode = false
+                                        navigateToWhiteboard = true
+                                    },
+                                    onView: {
+                                        selectedPlay = play
+                                        editMode = false
+                                        viewOnlyMode = true
+                                        navigateToWhiteboard = true
+                                    },
+                                    onAR: {
+                                        arPlay = play
+                                        showARSheet = true
+                                    },
+                                    onDelete: {
+                                        // Trigger the alert in HomeScreen
+                                        self.playToDeleteFromParent = play 
+                                        self.showDeleteConfirmationFromParent = true
+                                    },
+                                    onUpload: {
+                                        if Auth.auth().currentUser == nil {
+                                            uploadingPlayID = nil
+                                            uploadSuccessPlayID = nil
+                                            showLoginAlert = true
+                                            return
+                                        }
+                                        uploadingPlayID = play.id
+                                        uploadSuccessPlayID = nil
+                                        // Assuming savePlay also updates local for consistency or handles cloud only
+                                        SavedPlayService.shared.savePlay(play, forUserID: Auth.auth().currentUser?.uid ?? "") { error in
+                                            DispatchQueue.main.async {
+                                                uploadingPlayID = nil
+                                                if error == nil {
+                                                    uploadSuccessPlayID = play.id
+                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                                        uploadSuccessPlayID = nil
+                                                    }
+                                                } else {
+                                                    // Handle upload error
+                                                    syncStatus = "Upload failed: \(error?.localizedDescription ?? "Unknown error")"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    isUploading: uploadingPlayID == play.id,
+                                    uploadSuccess: uploadSuccessPlayID == play.id
+                                )
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                    .padding(.bottom, 60)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .onAppear {
-            savedPlays = SavedPlayService.shared.loadPlaysLocally()
-                .sorted { $0.lastModified > $1.lastModified }
+            // Data is now primarily driven by currentSavedPlays from HomeScreen
+            // Sync status or other local UI can be reset if needed
+            // syncStatus = ""
+            if currentSavedPlays.isEmpty {
+                 print("[DEBUG SavedPlaysScreen] onAppear, no plays from parent initially.")
+            } else {
+                 print("[DEBUG SavedPlaysScreen] onAppear, received \(currentSavedPlays.count) plays from parent.")
+            }
         }
-        .alert(isPresented: $showDeleteConfirmation) {
-            Alert(
-                title: Text("Delete Play"),
-                message: Text("Are you sure you want to delete '\(playToDelete?.name ?? "")'? This cannot be undone."),
-                primaryButton: .destructive(Text("Delete")) {
-                    if let play = playToDelete {
-                        deletePlay(play)
-                    }
-                    playToDelete = nil
-                },
-                secondaryButton: .cancel {
-                    playToDelete = nil
-                }
-            )
-        }
-    }
-    private func deletePlay(_ play: Models.SavedPlay) {
-        SavedPlayService.shared.deletePlayEverywhere(playID: play.id.uuidString) { _ in
-            // Refresh local state after deletion
-            savedPlays = SavedPlayService.shared.loadPlaysLocally().sorted { $0.lastModified > $1.lastModified }
-        }
+        .alert(isPresented: $showLoginAlert) { // Local alert for login requirement for upload
+             Alert(
+                 title: Text("Login Required"),
+                 message: Text("You must be logged in to upload plays."),
+                 dismissButton: .default(Text("OK"))
+             )
+         }
     }
 }
 
@@ -637,8 +672,7 @@ struct SavedPlayRow: View {
                             .foregroundColor(.purple)
                     }
                     Button(action: {
-                        print("[DEBUG SavedPlayRow] Trash icon tapped for play: \(play.name)")
-                        // onDelete() // Temporarily bypassed
+                        onDelete()
                     }) {
                         Image(systemName: "trash")
                             .foregroundColor(.red)

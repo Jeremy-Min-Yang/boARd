@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		091524E92DF0903B00671E84 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 091524E82DF0903B00671E84 /* ShareSheet.swift */; };
 		0917D4F22DD1FEF700F49352 /* BasketballsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4E72DD1FEF700F49352 /* BasketballsView.swift */; };
 		0917D4F32DD1FEF700F49352 /* DrawingLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4E92DD1FEF700F49352 /* DrawingLayer.swift */; };
 		0917D4F42DD1FEF700F49352 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4EA2DD1FEF700F49352 /* Extensions.swift */; };
@@ -48,6 +49,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		091524E82DF0903B00671E84 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
 		0917D4E72DD1FEF700F49352 /* BasketballsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasketballsView.swift; sourceTree = "<group>"; };
 		0917D4E82DD1FEF700F49352 /* CourtImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourtImageView.swift; sourceTree = "<group>"; };
 		0917D4E92DD1FEF700F49352 /* DrawingLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawingLayer.swift; sourceTree = "<group>"; };
@@ -123,6 +125,7 @@
 		58A4C38428F0E72C00E16278 = {
 			isa = PBXGroup;
 			children = (
+				091524E82DF0903B00671E84 /* ShareSheet.swift */,
 				58A4C38F28F0E72C00E16278 /* boARd */,
 				58A4C38E28F0E72C00E16278 /* Products */,
 				09E06C072DE2F8E300D11095 /* AppDelegate.swift */,
@@ -280,6 +283,7 @@
 				0917D4F92DD1FEF700F49352 /* OpponentsView.swift in Sources */,
 				0917D4FA2DD1FEF700F49352 /* PlayersView.swift in Sources */,
 				09ACAB762DD8B919006310D7 /* AuthViewModel.swift in Sources */,
+				091524E92DF0903B00671E84 /* ShareSheet.swift in Sources */,
 				09ACAB772DD8B919006310D7 /* AuthView.swift in Sources */,
 				09758C152DAD2E9F00AC52ED /* SavePlaySheet.swift in Sources */,
 			);
