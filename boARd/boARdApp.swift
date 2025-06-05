@@ -65,6 +65,7 @@ struct boARdApp: App {
             .fullScreenCover(isPresented: $showARSheet) {
                 // Content for the sheet
                 if let play = arPlay {
+                    // Always use ARContentViewWrapper for all sports
                     ARContentViewWrapper(play: play)
                 } else {
                     VStack {

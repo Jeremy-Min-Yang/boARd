@@ -643,59 +643,80 @@ struct SavedPlaysScreen: View {
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 12) {
-                            ForEach(currentSavedPlays) { play in // Use currentSavedPlays
-                                SavedPlayRow(
-                                    play: play,
-                                    dateFormatter: dateFormatter,
-                                    onEdit: {
-                                        selectedPlay = play
-                                        editMode = true
-                                        viewOnlyMode = false
-                                        navigateToWhiteboard = true
-                                    },
-                                    onView: {
-                                        selectedPlay = play
-                                        editMode = false
-                                        viewOnlyMode = true
-                                        navigateToWhiteboard = true
-                                    },
-                                    onAR: {
-                                        arPlay = play
-                                        showARSheet = true
-                                    },
-                                    onDelete: {
-                                        // Trigger the alert in HomeScreen
-                                        self.playToDeleteFromParent = play 
-                                        self.showDeleteConfirmationFromParent = true
-                                    },
-                                    onUpload: {
-                                        if Auth.auth().currentUser == nil {
-                                            uploadingPlayID = nil
-                                            uploadSuccessPlayID = nil
-                                            showLoginAlert = true
-                                            return
-                                        }
-                                        uploadingPlayID = play.id
-                                        uploadSuccessPlayID = nil
-                                        // Assuming savePlay also updates local for consistency or handles cloud only
-                                        SavedPlayService.shared.savePlay(play, forUserID: Auth.auth().currentUser?.uid ?? "") { error in
-                                            DispatchQueue.main.async {
-                                                uploadingPlayID = nil
-                                                if error == nil {
-                                                    uploadSuccessPlayID = play.id
-                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            // Group plays by sport
+                            let groupedPlays = Dictionary(grouping: currentSavedPlays) { play -> String in
+                                switch play.courtType {
+                                case "Full Court", "Half Court":
+                                    return "Basketball"
+                                case "Soccer Pitch":
+                                    return "Soccer"
+                                case "Football Field":
+                                    return "Football"
+                                default:
+                                    return "Other"
+                                }
+                            }
+                            ForEach(["Basketball", "Soccer", "Football", "Other"], id: \.self) { sport in
+                                if let plays = groupedPlays[sport], !plays.isEmpty {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("\(sport) Plays")
+                                            .font(.title2)
+                                            .fontWeight(.semibold)
+                                            .padding(.top, 16)
+                                            .padding(.leading, 8)
+                                        ForEach(plays) { play in
+                                            SavedPlayRow(
+                                                play: play,
+                                                dateFormatter: dateFormatter,
+                                                onEdit: {
+                                                    selectedPlay = play
+                                                    editMode = true
+                                                    viewOnlyMode = false
+                                                    navigateToWhiteboard = true
+                                                },
+                                                onView: {
+                                                    selectedPlay = play
+                                                    editMode = false
+                                                    viewOnlyMode = true
+                                                    navigateToWhiteboard = true
+                                                },
+                                                onAR: {
+                                                    arPlay = play
+                                                    showARSheet = true
+                                                },
+                                                onDelete: {
+                                                    self.playToDeleteFromParent = play
+                                                    self.showDeleteConfirmationFromParent = true
+                                                },
+                                                onUpload: {
+                                                    if Auth.auth().currentUser == nil {
+                                                        uploadingPlayID = nil
                                                         uploadSuccessPlayID = nil
+                                                        showLoginAlert = true
+                                                        return
                                                     }
-                                                } else {
-                                                    // Handle upload error
-                                                    syncStatus = "Upload failed: \(error?.localizedDescription ?? "Unknown error")"
-                                                }
-                                            }
+                                                    uploadingPlayID = play.id
+                                                    uploadSuccessPlayID = nil
+                                                    SavedPlayService.shared.savePlay(play, forUserID: Auth.auth().currentUser?.uid ?? "") { error in
+                                                        DispatchQueue.main.async {
+                                                            uploadingPlayID = nil
+                                                            if error == nil {
+                                                                uploadSuccessPlayID = play.id
+                                                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                                                    uploadSuccessPlayID = nil
+                                                                }
+                                                            } else {
+                                                                syncStatus = "Upload failed: \(error?.localizedDescription ?? "Unknown error")"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                isUploading: uploadingPlayID == play.id,
+                                                uploadSuccess: uploadSuccessPlayID == play.id
+                                            )
                                         }
-                                    },
-                                    isUploading: uploadingPlayID == play.id,
-                                    uploadSuccess: uploadSuccessPlayID == play.id
-                                )
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal)

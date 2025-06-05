@@ -26,15 +26,23 @@ class ARModel {
         
         // For chibi_kid variants, use the same image
         if modelName.starts(with: "cylinder_") {
-            self.image = UIImage(named: "cylinder")!
+            self.image = UIImage(named: "cylinder") ?? UIImage(systemName: "person.fill")!
+        } else if modelName == "football" {
+            self.image = UIImage(named: "football.png") ?? UIImage(systemName: "soccerball")!
+        } else if modelName == "soccerball" {
+            self.image = UIImage(named: "soccerball.png") ?? UIImage(systemName: "soccerball")!
         } else {
-            self.image = UIImage(named: modelName)!
+            self.image = UIImage(named: modelName) ?? UIImage(systemName: "cube.fill")!
         }
         
         // For chibi_kid variants, use the same USDZ file
         let filename: String
         if modelName.starts(with: "cylinder_") {
             filename = "cylinder.usdz"
+        } else if modelName == "soccerfield" {
+            filename = "soccerfield.usdz"
+        } else if modelName == "footballfield" {
+            filename = "footballfield.usdz"
         } else {
             filename = modelName + ".usdz"
         }
@@ -48,8 +56,19 @@ class ARModel {
                 case "hoop_court":
                     modelEntity.scale = SIMD3<Float>(repeating: 0.0003)
                     modelEntity.setPosition(.zero, relativeTo: nil)
+                    // Restore original orientation (no rotation or .pi/2 around Y)
                     modelEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
-                    print("DEBUG: Applied scaling to hoop_court.")
+                    print("DEBUG: Applied scaling and orientation to hoop_court.")
+                case "soccerfield":
+                    modelEntity.scale = SIMD3<Float>(repeating: 0.008)
+                    modelEntity.setPosition(.zero, relativeTo: nil)
+                    modelEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
+                    print("DEBUG: Applied scaling and orientation to soccerfield.")
+                case "footballfield":
+                    modelEntity.scale = SIMD3<Float>(repeating: 0.008)
+                    modelEntity.setPosition(.zero, relativeTo: nil)
+                    modelEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
+                    print("DEBUG: Applied scaling and orientation to footballfield.")
                 case let name where name.starts(with: "cylinder_"):
                     modelEntity.scale = SIMD3<Float>(repeating: 0.0000000000005)
                     modelEntity.setPosition(.zero, relativeTo: nil)
@@ -93,17 +112,39 @@ struct ContentView: View {
     @State private var entityMap: [UUID: ModelEntity] = [:]
     @State private var arViewInstance: CustomARView? = nil
     @State private var isCourtAdjustmentModeEnabled = false // New state for adjustment mode
+    @State private var showModelPlacementError = false // <-- Add this state
+    @State private var modelPlacementErrorMessage = "" // <-- Add this state
 
     static let walkingSpeed: Float = 0.2 // meters per second (adjust as needed)
 
     private var models: [ARModel] {
         var availableModels: [ARModel] = []
-        // Only add the hoop_court if present
         let filemanager = FileManager.default
         if let path = Bundle.main.resourcePath, let files = try? filemanager.contentsOfDirectory(atPath: path) {
-            if files.contains("hoop_court.usdz") {
-                let model = ARModel(modelName: "hoop_court")
-                availableModels.append(model)
+            switch play.courtType {
+            case "Full Court", "Half Court":
+                if files.contains("hoop_court.usdz") {
+                    availableModels.append(ARModel(modelName: "hoop_court"))
+                }
+                if files.contains("ball.usdz") {
+                    availableModels.append(ARModel(modelName: "ball"))
+                }
+            case "Soccer Pitch":
+                if files.contains("soccerfield.usdz") {
+                    availableModels.append(ARModel(modelName: "soccerfield"))
+                }
+                if files.contains("soccerball.usdz") {
+                    availableModels.append(ARModel(modelName: "soccerball"))
+                }
+            case "Football Field":
+                if files.contains("footballfield.usdz") {
+                    availableModels.append(ARModel(modelName: "footballfield"))
+                }
+                if files.contains("football.usdz") {
+                    availableModels.append(ARModel(modelName: "football"))
+                }
+            default:
+                break
             }
         }
         return availableModels
@@ -120,7 +161,9 @@ struct ContentView: View {
                 animationData: self.$animationData,
                 isAnimating: self.$isAnimating,
                 entityMap: self.$entityMap,
-                arViewInstance: self.$arViewInstance
+                arViewInstance: self.$arViewInstance,
+                showModelPlacementError: self.$showModelPlacementError, // <-- Pass binding
+                modelPlacementErrorMessage: self.$modelPlacementErrorMessage // <-- Pass binding
             )
             if self.isPlacementEnabled {
                 PlacementButtonsView(isPlacementEnabled: self.$isPlacementEnabled,
@@ -157,7 +200,7 @@ struct ContentView: View {
             }
             // Play button
             let _ = { print("DEBUG: Play button condition - placedModels: \(placedModels), isAnimating: \(isAnimating)") }()
-            if placedModels.contains("hoop_court") {
+            if placedModels.contains("hoop_court") || placedModels.contains("soccerfield") || placedModels.contains("footballfield") {
                 Button(action: {
                     print("DEBUG: Play button pressed.")
                     guard let arView = arViewInstance else {
@@ -176,6 +219,9 @@ struct ContentView: View {
                 }
                 .padding(.bottom, 100)
             }
+        }
+        .alert(isPresented: $showModelPlacementError) {
+            Alert(title: Text("Model Placement Failed"), message: Text(modelPlacementErrorMessage), dismissButton: .default(Text("OK")))
         }
     }
 
@@ -196,7 +242,7 @@ struct ContentView: View {
                 print("DEBUG: Skipping player \(player.id) - no assigned path or empty path.")
                 continue
             }
-            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
+            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType) }
             let percent: Double = 0.8
             let count = max(2, Int(Double(arPath.count) * percent))
             let shortPath = Array(arPath.suffix(count))
@@ -217,7 +263,7 @@ struct ContentView: View {
                 print("DEBUG: Skipping ball \(ball.id) - no assigned path or empty path.")
                 continue
             }
-            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
+            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType) }
             let percent: Double = 0.8
             let count = max(2, Int(Double(arPath.count) * percent))
             let shortPath = Array(arPath.suffix(count))
@@ -232,7 +278,7 @@ struct ContentView: View {
         }
         // Opponents
         for opponent in play.opponents {
-            let arPosition2D = map2DToAR(opponent.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let arPosition2D = map2DToAR(opponent.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType)
             let arPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
             let opponentEntity: ModelEntity
             if let loaded = try? ModelEntity.loadModel(named: "cylinder") {
@@ -337,6 +383,8 @@ struct ARViewContainer: UIViewRepresentable {
     @Binding var isAnimating: Bool
     @Binding var entityMap: [UUID: ModelEntity]
     @Binding var arViewInstance: CustomARView?
+    @Binding var showModelPlacementError: Bool
+    @Binding var modelPlacementErrorMessage: String
     
     func makeUIView(context: Context) -> ARView {
         let arView = CustomARView(frame: .zero)
@@ -396,7 +444,7 @@ struct ARViewContainer: UIViewRepresentable {
                     clonedEntity.collision = CollisionComponent(shapes: [collisionShape])
                 }
                 if let customARView = uiView as? CustomARView {
-                    if model.modelName == "hoop_court" {
+                    if model.modelName == "hoop_court" || model.modelName == "soccerfield" || model.modelName == "footballfield" {
                         if let focusPosition = customARView.focusEntityPosition() {
                             customARView.mainAnchor.setPosition(focusPosition, relativeTo: nil)
                             print("[DEBUG] Court anchor placed at: \(customARView.mainAnchor.position(relativeTo: nil))")
@@ -406,7 +454,11 @@ struct ARViewContainer: UIViewRepresentable {
                             }
                             clonedEntity.setPosition(.zero, relativeTo: nil)
                             // Always set the same fixed rotation
-                            clonedEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
+                            if model.modelName == "soccerfield" || model.modelName == "footballfield" {
+                                clonedEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
+                            } else if model.modelName == "hoop_court" {
+                                clonedEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
+                            }
                             customARView.mainAnchor.addChild(clonedEntity)
                             customARView.lastPlacedEntity = nil // Prevent selection for dragging
                             customARView.toggleFocusEntity(isVisible: false)
@@ -425,7 +477,7 @@ struct ARViewContainer: UIViewRepresentable {
                             customARView.printEntityHierarchy()
                             DispatchQueue.main.async {
                                 self.modelConfirmedForPlacement = nil
-                                self.placedModels.insert("hoop_court")
+                                self.placedModels.insert(model.modelName)
                                 print("DEBUG: placedModels now contains: \(self.placedModels)")
                             }
                             // After adding all player entities in placePlayersAndBalls:
@@ -479,12 +531,32 @@ struct ARViewContainer: UIViewRepresentable {
                             print("DEBUG: No surface found for placement.")
                         }
                     }
+                    // General placement for all other models (soccerfield, footballfield, soccerball, football, etc.)
+                    if let focusPosition = customARView.focusEntityPosition() {
+                        customARView.mainAnchor.setPosition(focusPosition, relativeTo: nil)
+                        clonedEntity.setPosition(.zero, relativeTo: nil)
+                        // Optionally set orientation if needed
+                        // clonedEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
+                        customARView.mainAnchor.addChild(clonedEntity)
+                        customARView.lastPlacedEntity = nil
+                        customARView.toggleFocusEntity(isVisible: false)
+                        customARView.removePreview()
+                        DispatchQueue.main.async {
+                            self.placedModels.insert(model.modelName)
+                        }
+                    }
                 }
                 if model.modelName == "hoop_court", let customARView = uiView as? CustomARView {
                     customARView.toggleFocusEntity(isVisible: false)
                 }
             } else {
                 print("DEBUG: unable to load modelEntity for \(model.modelName)")
+                // Show error to user
+                DispatchQueue.main.async {
+                    self.modelPlacementErrorMessage = "The 3D model for \(model.modelName) could not be loaded. Please try again or check the model file."
+                    self.showModelPlacementError = true
+                    self.modelConfirmedForPlacement = nil
+                }
             }
             DispatchQueue.main.async {
                 self.modelConfirmedForPlacement = nil
@@ -959,7 +1031,7 @@ class CustomARView: ARView {
         }
         // Players
         for player in play.players {
-            let arPosition2D = map2DToAR(player.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let arPosition2D = map2DToAR(player.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType)
             let arPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
             let playerEntity: ModelEntity
             if let loaded = try? ModelEntity.loadModel(named: "cylinder") {
@@ -1001,7 +1073,7 @@ class CustomARView: ARView {
         }
         // Balls
         for ball in play.balls {
-            let arPosition2D = map2DToAR(ball.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let arPosition2D = map2DToAR(ball.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType)
             let ballARPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
             let ballEntity: ModelEntity
             if let loaded = try? ModelEntity.loadModel(named: "ball") {
@@ -1041,7 +1113,7 @@ class CustomARView: ARView {
         }
         // Opponents
         for opponent in play.opponents {
-            let arPosition2D = map2DToAR(opponent.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
+            let arPosition2D = map2DToAR(opponent.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType)
             let arPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
             let opponentEntity: ModelEntity
             if let loaded = try? ModelEntity.loadModel(named: "cylinder") {
@@ -1104,7 +1176,7 @@ class CustomARView: ARView {
                 print("DEBUG: Skipping player \(player.id) - no assigned path or empty path.")
                 continue
             }
-            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
+            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType) }
             let percent: Double = 0.8
             let count = max(2, Int(Double(arPath.count) * percent))
             let shortPath = Array(arPath.suffix(count))
@@ -1125,7 +1197,7 @@ class CustomARView: ARView {
                 print("DEBUG: Skipping ball \(ball.id) - no assigned path or empty path.")
                 continue
             }
-            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
+            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType) }
             let percent: Double = 0.8
             let count = max(2, Int(Double(arPath.count) * percent))
             let shortPath = Array(arPath.suffix(count))
@@ -1263,7 +1335,7 @@ class CustomARView: ARView {
                 print("DEBUG: Skipping player \(player.id) - no assigned path or empty path.")
                 continue
             }
-            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
+            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType) }
             let percent: Double = 0.8
             let count = max(2, Int(Double(arPath.count) * percent))
             let shortPath = Array(arPath.suffix(count))
@@ -1284,7 +1356,7 @@ class CustomARView: ARView {
                 print("DEBUG: Skipping ball \(ball.id) - no assigned path or empty path.")
                 continue
             }
-            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
+            let arPath = drawing.points.map { map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType) }
             let percent: Double = 0.8
             let count = max(2, Int(Double(arPath.count) * percent))
             let shortPath = Array(arPath.suffix(count))
@@ -1481,12 +1553,20 @@ extension SIMD4 {
     }
 }
 
-func map2DToAR(_ point: CGPoint, courtSize: CGSize, arCourtWidth: Float, arCourtHeight: Float) -> SIMD3<Float> {
+func map2DToAR(_ point: CGPoint, courtSize: CGSize, arCourtWidth: Float, arCourtHeight: Float, courtType: String = "") -> SIMD3<Float> {
     let xNorm = Float(point.x / courtSize.width)
     let zNorm = Float(point.y / courtSize.height)
-    let x = (xNorm - 0.5) * arCourtWidth - 0.19
-    let z = (zNorm - 0.5) * arCourtHeight + 0.02
-    return SIMD3<Float>(x, 0.05, z) // Raise Y position to 0.05 to ensure visibility above court
+    if courtType == "Soccer Pitch" || courtType == "Football Field" {
+        // Swap and flip axes for correct orientation
+        let x = (zNorm - 0.5) * arCourtWidth - 0.19
+        let z = (0.5 - xNorm) * arCourtHeight + 0.02
+        return SIMD3<Float>(x, 0.05, z)
+    } else {
+        // Default (basketball)
+        let x = (xNorm - 0.5) * arCourtWidth - 0.19
+        let z = (zNorm - 0.5) * arCourtHeight + 0.02
+        return SIMD3<Float>(x, 0.05, z)
+    }
 }
 
 // Add exit button support

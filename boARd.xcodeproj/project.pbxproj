@@ -30,6 +30,10 @@
 		09ACAB772DD8B919006310D7 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACAB742DD8B918006310D7 /* AuthView.swift */; };
 		09ACAB792DD8BC2C006310D7 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACAB782DD8BC2C006310D7 /* ProfileView.swift */; };
 		09ACAB7B2DD8BE85006310D7 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACAB7A2DD8BE85006310D7 /* OnboardingView.swift */; };
+		09B1BAC12DF1A0790016A8B9 /* footballfield.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 09B1BAC02DF1A0790016A8B9 /* footballfield.usdz */; };
+		09B1BAC32DF1A0870016A8B9 /* football.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 09B1BAC22DF1A0870016A8B9 /* football.usdz */; };
+		09B1BAC72DF1A09B0016A8B9 /* soccerball.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 09B1BAC62DF1A09B0016A8B9 /* soccerball.usdz */; };
+		09B1BAD32DF1A94A0016A8B9 /* soccerfield.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 09B1BAD22DF1A94A0016A8B9 /* soccerfield.usdz */; };
 		09B94BC82DE58FD80097DDA9 /* ARPlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09B94BC72DE58FD80097DDA9 /* ARPlayView.swift */; };
 		09B94BCB2DE598970097DDA9 /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09B94BCA2DE598970097DDA9 /* ARKit.framework */; };
 		09B94BCD2DE598A10097DDA9 /* RealityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09B94BCC2DE598A10097DDA9 /* RealityKit.framework */; };
@@ -68,6 +72,10 @@
 		09ACAB752DD8B918006310D7 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		09ACAB782DD8BC2C006310D7 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		09ACAB7A2DD8BE85006310D7 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		09B1BAC02DF1A0790016A8B9 /* footballfield.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = footballfield.usdz; sourceTree = "<group>"; };
+		09B1BAC22DF1A0870016A8B9 /* football.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = football.usdz; sourceTree = "<group>"; };
+		09B1BAC62DF1A09B0016A8B9 /* soccerball.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = soccerball.usdz; sourceTree = "<group>"; };
+		09B1BAD22DF1A94A0016A8B9 /* soccerfield.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = soccerfield.usdz; sourceTree = "<group>"; };
 		09B94BC72DE58FD80097DDA9 /* ARPlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARPlayView.swift; sourceTree = "<group>"; };
 		09B94BCA2DE598970097DDA9 /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
 		09B94BCC2DE598A10097DDA9 /* RealityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RealityKit.framework; path = System/Library/Frameworks/RealityKit.framework; sourceTree = SDKROOT; };
@@ -159,6 +167,10 @@
 				0917D4ED2DD1FEF700F49352 /* PlayersView.swift */,
 				09ACAB782DD8BC2C006310D7 /* ProfileView.swift */,
 				EC1609BE2DE7071B00E4C4E0 /* hoop_court.usdz */,
+				09B1BAC02DF1A0790016A8B9 /* footballfield.usdz */,
+				09B1BAD22DF1A94A0016A8B9 /* soccerfield.usdz */,
+				09B1BAC22DF1A0870016A8B9 /* football.usdz */,
+				09B1BAC62DF1A09B0016A8B9 /* soccerball.usdz */,
 				EC1609C42DE741E100E4C4E0 /* cylinder.usdz */,
 				EC1609BC2DE7070D00E4C4E0 /* ball.usdz */,
 				09B94BC72DE58FD80097DDA9 /* ARPlayView.swift */,
@@ -250,10 +262,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				EC1609C52DE741E100E4C4E0 /* cylinder.usdz in Resources */,
+				09B1BAD32DF1A94A0016A8B9 /* soccerfield.usdz in Resources */,
 				EC1609BD2DE7070D00E4C4E0 /* ball.usdz in Resources */,
 				58A4C39828F0E72E00E16278 /* Preview Assets.xcassets in Resources */,
+				09B1BAC72DF1A09B0016A8B9 /* soccerball.usdz in Resources */,
 				EC1609BF2DE7071B00E4C4E0 /* hoop_court.usdz in Resources */,
 				0917D4FB2DD1FEF700F49352 /* Preview Assets.xcassets in Resources */,
+				09B1BAC32DF1A0870016A8B9 /* football.usdz in Resources */,
+				09B1BAC12DF1A0790016A8B9 /* footballfield.usdz in Resources */,
 				58A4C39528F0E72E00E16278 /* Assets.xcassets in Resources */,
 				EC1609C32DE711CE00E4C4E0 /* GoogleService-Info.plist in Resources */,
 			);
