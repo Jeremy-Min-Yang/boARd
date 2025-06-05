@@ -2,7 +2,7 @@ import SwiftUI
 
 struct BasketballsView: View {
     let courtType: CourtType
-    @Binding var basketballs: [BasketballItem]
+    @Binding var balls: [BallItem]
     @Binding var players: [PlayerCircle]
     @Binding var draggedBasketballIndex: Int?
     @Binding var currentTouchType: TouchInputType
@@ -13,11 +13,11 @@ struct BasketballsView: View {
         GeometryReader { geometry in
             ZStack {
                 // Render unassigned basketballs at their own position
-                ForEach(basketballs.indices, id: \ .self) { index in
-                    let basketball = basketballs[index]
-                    if basketball.assignedPlayerId == nil {
-                        BasketballView(position: virtualToScreen(basketball.position, courtType: courtType, viewSize: geometry.size))
-                            .position(virtualToScreen(basketball.position, courtType: courtType, viewSize: geometry.size))
+                ForEach(balls.indices, id: \.self) { index in
+                    let ball = balls[index]
+                    if ball.assignedPlayerId == nil {
+                        BasketballView(ballKind: ball.ballKind, position: virtualToScreen(ball.position, courtType: courtType, viewSize: geometry.size))
+                            .position(virtualToScreen(ball.position, courtType: courtType, viewSize: geometry.size))
                             .overlay(
                                 Group {
                                     if isAssigningBall && selectedBasketballIndex == index {
@@ -38,13 +38,13 @@ struct BasketballsView: View {
                                         if selectedTool == .move {
                                             draggedBasketballIndex = index
                                             let virtualPos = screenToVirtual(value.location, courtType: courtType, viewSize: geometry.size)
-                                            basketballs[index].position = virtualPos
+                                            balls[index].position = virtualPos
                                         }
                                     }
                                     .onEnded { value in
                                         if selectedTool == .move && draggedBasketballIndex == index {
                                             let virtualPos = screenToVirtual(value.location, courtType: courtType, viewSize: geometry.size)
-                                            basketballs[index].normalizedPosition = CGPoint(x: virtualPos.x / courtType.virtualCourtSize.width, y: virtualPos.y / courtType.virtualCourtSize.height)
+                                            balls[index].normalizedPosition = CGPoint(x: virtualPos.x / courtType.virtualCourtSize.width, y: virtualPos.y / courtType.virtualCourtSize.height)
                                         }
                                     },
                                 including: selectedTool == .move ? .all : .subviews
@@ -52,9 +52,9 @@ struct BasketballsView: View {
                     }
                 }
                 // Render assigned basketballs at the 2 o'clock position of their player
-                ForEach(basketballs.indices, id: \ .self) { index in
-                    let basketball = basketballs[index]
-                    if let assignedId = basketball.assignedPlayerId,
+                ForEach(balls.indices, id: \.self) { index in
+                    let ball = balls[index]
+                    if let assignedId = ball.assignedPlayerId,
                        let player = players.first(where: { $0.id == assignedId }) {
                         // Calculate 2 o'clock offset
                         let offset: CGFloat = 30
@@ -63,7 +63,7 @@ struct BasketballsView: View {
                         let dy = -offset * sin(angle)
                         let playerPos = virtualToScreen(player.position, courtType: courtType, viewSize: geometry.size)
                         let displayPos = CGPoint(x: playerPos.x + dx, y: playerPos.y + dy)
-                        BasketballView(position: displayPos)
+                        BasketballView(ballKind: ball.ballKind, position: displayPos)
                             .position(displayPos)
                             .zIndex(100) // Ensure above player
                     }
@@ -74,9 +74,10 @@ struct BasketballsView: View {
 }
 
 struct BasketballView: View {
+    let ballKind: String
     let position: CGPoint
     var body: some View {
-        Image("basketball")
+        Image(ballKind)
             .resizable()
             .aspectRatio(contentMode: .fit)
             .frame(width: 40, height: 40)

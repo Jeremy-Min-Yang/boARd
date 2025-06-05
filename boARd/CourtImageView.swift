@@ -43,28 +43,41 @@ struct CourtBackgroundView: View {
     let courtWidth: CGFloat
     let courtHeight: CGFloat
     var body: some View {
-        if courtType == .full {
-            Image("fullcourt")
-                .resizable()
-                .scaledToFit()
-                .overlay(
-                    Rectangle()
-                        .stroke(Color.black, lineWidth: 3)
-                        .allowsHitTesting(false)
-                )
-                .rotationEffect(Angle(degrees: 90))
-                .frame(width: courtWidth * 1.8, height: courtHeight * 1.7)
-        } else {
-            Image("halfcourt")
-                .resizable()
-                .scaledToFit()
-                .overlay(
-                    Rectangle()
-                        .stroke(Color.black, lineWidth: 3)
-                        .allowsHitTesting(false)
-                )
-                .frame(width: courtWidth * 1.05, height: courtHeight * 1.05)
-                .clipped()
-        }
+        Image(courtType.imageName)
+            .resizable()
+            .scaledToFit()
+            .overlay(
+                Rectangle()
+                    .stroke(Color.black, lineWidth: 3)
+                    .allowsHitTesting(false)
+            )
+            .rotationEffect((courtType == .full || courtType == .soccer) ? Angle(degrees: 90) : .zero)
+            .frame(
+                width: {
+                    switch courtType {
+                    case .full:
+                        return courtWidth * 1.8
+                    case .soccer:
+                        return courtWidth * 1.7 // Adjusted for smaller display
+                    case .football:
+                        return courtWidth * 1.0 // User's preference
+                    default: // .half or other types
+                        return courtWidth * 1.0 // User's preference
+                    }
+                }(),
+                height: {
+                    switch courtType {
+                    case .full:
+                        return courtHeight * 1.7
+                    case .soccer:
+                        return courtHeight * 1.35 // Adjusted for smaller display
+                    case .football:
+                        return courtHeight * 0.95 // User's preference
+                    default: // .half or other types
+                        return courtHeight * 1.0 // User's preference
+                    }
+                }()
+            )
+            .clipped()
     }
 } 

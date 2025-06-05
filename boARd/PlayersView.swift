@@ -30,6 +30,7 @@ struct PlayersView: View {
                         PlayerCircleView(
                             position: virtualToScreen(player.position, courtType: courtType, viewSize: geometry.size),
                             number: player.number,
+                            label: player.label,
                             color: playerColor,
                             isMoving: player.isMoving
                         )
@@ -71,6 +72,7 @@ struct PlayersView: View {
 struct PlayerCircleView: View {
     let position: CGPoint
     let number: Int
+    let label: String?
     let color: Color
     var isMoving: Bool = false
     var body: some View {
@@ -85,7 +87,7 @@ struct PlayerCircleView: View {
                 .stroke(Color.black, lineWidth: 2)
                 .background(Circle().fill(color))
                 .frame(width: 50, height: 50)
-            Text("\(number)")
+            Text(label ?? "\(number)")
                 .font(.headline)
                 .foregroundColor(.white)
         }

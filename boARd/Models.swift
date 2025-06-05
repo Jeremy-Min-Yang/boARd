@@ -5,6 +5,8 @@ import SwiftUI
 enum CourtType: String, CaseIterable, Identifiable, Codable {
     case full = "Full Court"
     case half = "Half Court"
+    case football = "Football Field"
+    case soccer = "Soccer Pitch"
     // Add other cases if you have them e.g. custom, etc.
 
     var id: String { self.rawValue }
@@ -13,9 +15,13 @@ enum CourtType: String, CaseIterable, Identifiable, Codable {
     var imageName: String {
         switch self {
         case .full:
-            return "full_court" // Ensure you have an image named "full_court" in your assets
+            return "fullcourt" // Was "full_court"
         case .half:
-            return "half_court" // Ensure you have an image named "half_court" in your assets
+            return "halfcourt" // Was "half_court"
+        case .football:
+            return "footballplay" // Was "footballfield", using "footballplay.imageset"
+        case .soccer:
+            return "soccerfield"   // Correct, using "soccerfield.imageset"
         // Add cases for other court types if necessary
         }
     }
@@ -32,6 +38,10 @@ enum CourtType: String, CaseIterable, Identifiable, Codable {
         case .half:
             // Example aspect ratio for a half court (e.g., 47ft long by 50ft wide -> 47/50)
             aspectRatio = 47.0 / 50.0
+        case .football:
+            aspectRatio = 300.0 / 160.0 // Standard American Football field (100yd x 53.33yd)
+        case .soccer:
+            aspectRatio = 105.0 / 68.0  // Common FIFA soccer pitch (105m x 68m)
         // Add cases for other court types if necessary
         }
 
@@ -50,12 +60,32 @@ enum CourtType: String, CaseIterable, Identifiable, Codable {
         return CGSize(width: newWidth, height: newHeight)
     }
     
+    // Returns the drawing boundary for this court type
+    var drawingBoundary: DrawingBoundary {
+        switch self {
+        case .full:
+            return DrawingBoundary.fullCourt
+        case .half:
+            return DrawingBoundary.halfCourt
+        case .football:
+            return DrawingBoundary.footballField
+        case .soccer:
+            return DrawingBoundary.soccerField
+        }
+    }
+
+    // This can be removed if no longer used, or updated to use drawingBoundary.
+    // For now, let it be, but ensure virtualToScreen/screenToVirtual don't use it directly.
     var virtualCourtSize: CGSize {
         switch self {
         case .full:
             return CGSize(width: 940, height: 500) // Example: 94ft x 50ft scaled up
         case .half:
             return CGSize(width: 470, height: 500) // Example: 47ft x 50ft scaled up
+        case .football:
+            return CGSize(width: 1000, height: 533) // Based on 300:160 aspect ratio
+        case .soccer:
+            return CGSize(width: 1000, height: 648) // Based on 105:68 aspect ratio
         }
     }
 }
@@ -71,7 +101,7 @@ enum DrawingTool: String, CaseIterable {
     case arrow
     case move
     case addPlayer
-    case addBasketball
+    case addBall
     case addOpponent
 
     var iconName: String {
@@ -80,7 +110,7 @@ enum DrawingTool: String, CaseIterable {
         case .arrow: return "arrow.up.right"
         case .move: return "hand.point.up.left.fill"
         case .addPlayer: return "person.fill.badge.plus"
-        case .addBasketball: return "basketball.fill"
+        case .addBall: return "basketball.fill"
         case .addOpponent: return "person.crop.circle.badge.xmark"
         }
     }
@@ -107,7 +137,7 @@ enum PlaybackState {
 
 enum Action {
     case drawing(Drawing)
-    case basketball(BasketballItem)
+    case ball(BallItem)
     case player(PlayerCircle)
     case opponent(OpponentCircle)
 }
@@ -142,8 +172,18 @@ struct DrawingBoundary {
     let height: CGFloat
     let offsetX: CGFloat
     let offsetY: CGFloat
-    static let fullCourt = DrawingBoundary(width: 1072, height: 569, offsetX: 0, offsetY: 0)
-    static let halfCourt = DrawingBoundary(width: 700, height: 855, offsetX: 0, offsetY: 98)
+
+    static let fullCourt = DrawingBoundary(width: 1072, height: 569, offsetX: 0, offsetY: 0) // Basketball Full Court
+    static let halfCourt = DrawingBoundary(width: 700, height: 855, offsetX: 0, offsetY: 98) // Basketball Half Court
+    
+    // Soccer: PDF is 527.97 (W) x 762.5 (H) [Portrait]. Rotated to Landscape for display.
+    // Logical canvas matches rotated PDF: Width from PDF Height, Height from PDF Width.
+    static let soccerField = DrawingBoundary(width: 850, height: 585, offsetX: 0, offsetY: 0)
+    
+    // Football: PDF is 282.24 (W) x 198.06 (H) [Landscape]. Aspect ratio ~1.425.
+    // Scaled to width 1000 for drawing canvas: 1000 / (282.24 / 198.06) = 701.747...
+    static let footballField = DrawingBoundary(width: 852, height: 590, offsetX: 0, offsetY: 0)
+
     func getFrameSize() -> CGSize { CGSize(width: width, height: height) }
     func getOffset() -> CGPoint { CGPoint(x: offsetX, y: offsetY) }
 }
@@ -166,17 +206,20 @@ struct PlayerCircle {
     var id = UUID()
     var position: CGPoint
     var number: Int
+    var label: String? = nil // Optional label for soccer/football
     var color: Color = .green
     var normalizedPosition: CGPoint?
     var assignedPathId: UUID?
     var isMoving: Bool = false
 }
 
-struct BasketballItem {
+struct BallItem {
+    var id: UUID = UUID()
     var position: CGPoint
     var normalizedPosition: CGPoint?
     var assignedPathId: UUID?
     var assignedPlayerId: UUID?
+    var ballKind: String
 }
 
 struct OpponentCircle {
@@ -198,10 +241,12 @@ struct PlayerAnimationData {
 // MARK: - Virtual/Screen Coordinate Mapping
 
 func virtualToScreen(_ point: CGPoint, courtType: CourtType, viewSize: CGSize) -> CGPoint {
-    let courtSize = courtType.virtualCourtSize
-    let scale = min(viewSize.width / courtSize.width, viewSize.height / courtSize.height)
-    let offsetX = (viewSize.width - courtSize.width * scale) / 2
-    let offsetY = (viewSize.height - courtSize.height * scale) / 2
+    let logicalSize = courtType.drawingBoundary.getFrameSize() // Use DrawingBoundary
+    guard logicalSize.width > 0, logicalSize.height > 0 else { return point } // Avoid division by zero
+
+    let scale = min(viewSize.width / logicalSize.width, viewSize.height / logicalSize.height)
+    let offsetX = (viewSize.width - logicalSize.width * scale) / 2
+    let offsetY = (viewSize.height - logicalSize.height * scale) / 2
     return CGPoint(
         x: point.x * scale + offsetX,
         y: point.y * scale + offsetY
@@ -209,10 +254,16 @@ func virtualToScreen(_ point: CGPoint, courtType: CourtType, viewSize: CGSize) -
 }
 
 func screenToVirtual(_ point: CGPoint, courtType: CourtType, viewSize: CGSize) -> CGPoint {
-    let courtSize = courtType.virtualCourtSize
-    let scale = min(viewSize.width / courtSize.width, viewSize.height / courtSize.height)
-    let offsetX = (viewSize.width - courtSize.width * scale) / 2
-    let offsetY = (viewSize.height - courtSize.height * scale) / 2
+    let logicalSize = courtType.drawingBoundary.getFrameSize() // Use DrawingBoundary
+    guard viewSize.width > 0, viewSize.height > 0, logicalSize.width > 0, logicalSize.height > 0 else { return point }
+
+    let scale = min(viewSize.width / logicalSize.width, viewSize.height / logicalSize.height)
+    let offsetX = (viewSize.width - logicalSize.width * scale) / 2
+    let offsetY = (viewSize.height - logicalSize.height * scale) / 2
+    
+    // Avoid division by zero for scale
+    guard scale > 0 else { return .zero } // Or handle as an error/default
+
     return CGPoint(
         x: (point.x - offsetX) / scale,
         y: (point.y - offsetY) / scale
@@ -234,11 +285,17 @@ struct Models {
 
         public var drawings: [DrawingData]
         public var players: [PlayerData]
-        public var basketballs: [BasketballData]
+        public var balls: [BallData]
         public var opponents: [OpponentData]
 
         public var courtTypeEnum: CourtType {
-            return courtType == "full" ? .full : .half
+            switch courtType {
+            case "Full Court": return .full
+            case "Half Court": return .half
+            case "Football Field": return .football
+            case "Soccer Pitch": return .soccer
+            default: return .half // Default or handle error as appropriate
+            }
         }
     }
 
@@ -262,12 +319,13 @@ struct Models {
         public var assignedPathId: UUID?
     }
 
-    struct BasketballData: Codable, Identifiable {
+    struct BallData: Codable, Identifiable {
         public var id = UUID()
         public var position: PointData
         public var normalizedPosition: PointData?
         public var assignedPathId: UUID?
         public var assignedPlayerId: UUID?
+        public var ballKind: String
     }
 
     struct OpponentData: Codable, Identifiable {

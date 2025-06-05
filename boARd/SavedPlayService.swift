@@ -34,7 +34,7 @@ public class SavedPlayService {
                 "courtType": mutablePlay.courtType,
                 "drawings": mutablePlay.drawings.map { self.convertDrawingDataToDictionary($0) },
                 "players": mutablePlay.players.map { self.convertPlayerDataToDictionary($0) },
-                "basketballs": mutablePlay.basketballs.map { self.convertBasketballDataToDictionary($0) },
+                "balls": mutablePlay.balls.map { self.convertBallDataToDictionary($0) },
                 "opponents": mutablePlay.opponents.map { self.convertOpponentDataToDictionary($0) }
             ]
             
@@ -100,12 +100,12 @@ public class SavedPlayService {
         // Parse drawings, players, basketballs, opponents
         let drawingsData = data["drawings"] as? [[String: Any]] ?? []
         let playersData = data["players"] as? [[String: Any]] ?? []
-        let basketballsData = data["basketballs"] as? [[String: Any]] ?? []
+        let basketballsData = data["balls"] as? [[String: Any]] ?? []
         let opponentsData = data["opponents"] as? [[String: Any]] ?? []
         
         let drawings = drawingsData.compactMap { self.convertDictionaryToDrawingData($0) }
         let players = playersData.compactMap { self.convertDictionaryToPlayerData($0) }
-        let basketballs = basketballsData.compactMap { self.convertDictionaryToBasketballData($0) }
+        let balls = basketballsData.compactMap { self.convertDictionaryToBallData($0) }
         let opponents = opponentsData.compactMap { self.convertDictionaryToOpponentData($0) }
         
         return Models.SavedPlay(
@@ -119,7 +119,7 @@ public class SavedPlayService {
             courtType: courtType,
             drawings: drawings,
             players: players,
-            basketballs: basketballs,
+            balls: balls,
             opponents: opponents
         )
     }
@@ -149,13 +149,14 @@ public class SavedPlayService {
         ]
     }
     
-    private func convertBasketballDataToDictionary(_ basketball: Models.BasketballData) -> [String: Any] {
+    private func convertBallDataToDictionary(_ ball: Models.BallData) -> [String: Any] {
         return [
-            "id": basketball.id.uuidString,
-            "position": ["x": basketball.position.x, "y": basketball.position.y],
-            "normalizedPosition": basketball.normalizedPosition.map { ["x": $0.x, "y": $0.y] } as Any,
-            "assignedPathId": basketball.assignedPathId?.uuidString as Any,
-            "assignedPlayerId": basketball.assignedPlayerId?.uuidString as Any
+            "id": ball.id.uuidString,
+            "position": ["x": ball.position.x, "y": ball.position.y],
+            "normalizedPosition": ball.normalizedPosition.map { ["x": $0.x, "y": $0.y] } as Any,
+            "assignedPathId": ball.assignedPathId?.uuidString as Any,
+            "assignedPlayerId": ball.assignedPlayerId?.uuidString as Any,
+            "ballKind": ball.ballKind
         ]
     }
     
@@ -242,10 +243,11 @@ public class SavedPlayService {
         )
     }
     
-    private func convertDictionaryToBasketballData(_ dict: [String: Any]) -> Models.BasketballData? {
+    private func convertDictionaryToBallData(_ dict: [String: Any]) -> Models.BallData? {
         guard let positionDict = dict["position"] as? [String: Any],
               let x = positionDict["x"] as? CGFloat,
-              let y = positionDict["y"] as? CGFloat else {
+              let y = positionDict["y"] as? CGFloat,
+              let ballKind = dict["ballKind"] as? String else {
             return nil
         }
         
@@ -274,12 +276,13 @@ public class SavedPlayService {
             id = parsedId
         }
         
-        return Models.BasketballData(
+        return Models.BallData(
             id: id,
             position: position,
             normalizedPosition: normalizedPosition,
             assignedPathId: assignedPathId,
-            assignedPlayerId: assignedPlayerId
+            assignedPlayerId: assignedPlayerId,
+            ballKind: ballKind
         )
     }
     
@@ -380,21 +383,25 @@ public class SavedPlayService {
         )
     }
     
-    static func convertToBasketball(basketballData: Models.BasketballData) -> BasketballItem {
-        return BasketballItem(
-            position: basketballData.position.cgPoint,
-            normalizedPosition: basketballData.normalizedPosition?.cgPoint,
-            assignedPathId: basketballData.assignedPathId,
-            assignedPlayerId: basketballData.assignedPlayerId
+    static func convertToBallItem(ballData: Models.BallData) -> BallItem {
+        return BallItem(
+            id: ballData.id,
+            position: ballData.position.cgPoint,
+            normalizedPosition: ballData.normalizedPosition?.cgPoint,
+            assignedPathId: ballData.assignedPathId,
+            assignedPlayerId: ballData.assignedPlayerId,
+            ballKind: ballData.ballKind
         )
     }
     
-    static func convertToBasketballData(basketball: BasketballItem) -> Models.BasketballData {
-        return Models.BasketballData(
-            position: Models.PointData.from(cgPoint: basketball.position),
-            normalizedPosition: basketball.normalizedPosition.map { Models.PointData.from(cgPoint: $0) },
-            assignedPathId: basketball.assignedPathId,
-            assignedPlayerId: basketball.assignedPlayerId
+    static func convertToBallData(ball: BallItem) -> Models.BallData {
+        return Models.BallData(
+            id: ball.id,
+            position: Models.PointData.from(cgPoint: ball.position),
+            normalizedPosition: ball.normalizedPosition.map { Models.PointData.from(cgPoint: $0) },
+            assignedPathId: ball.assignedPathId,
+            assignedPlayerId: ball.assignedPlayerId,
+            ballKind: ball.ballKind
         )
     }
     

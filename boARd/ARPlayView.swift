@@ -172,7 +172,7 @@ struct ARPlayView: UIViewRepresentable {
     static func prepareAnimationData(play: Models.SavedPlay, courtSize: CGSize, arCourtWidth: Float, arCourtHeight: Float, courtAnchor: AnchorEntity) -> PreparedAREntitiesAndAnimations {
         var preparedResult = PreparedAREntitiesAndAnimations()
         print("[ARPlayView prepareAnimationData] Processing play: \(play.name) (ID: \(play.id))")
-        print("[ARPlayView prepareAnimationData] Number of players: \(play.players.count), Basketballs: \(play.basketballs.count)")
+        print("[ARPlayView prepareAnimationData] Number of players: \(play.players.count), Balls: \(play.balls.count)")
 
         for (index, player) in play.players.enumerated() {
             print("[ARPlayView prepareAnimationData] Player [\(index)] details: ID \(player.id), Num \(player.number), Pos \(player.position.cgPoint), PathID \(player.assignedPathId?.uuidString ?? "None")")
@@ -269,8 +269,10 @@ struct ARPlayView: UIViewRepresentable {
             print("textEntity scale:", textEntity.scale)
             print("debugSphere scale:", debugSphere.scale)
         }
-        for (index, ballData) in play.basketballs.enumerated() {
-            print("[ARPlayView prepareAnimationData] Ball [\(index)] details: ID \(ballData.id), Pos \(ballData.position.cgPoint), PathID \(ballData.assignedPathId?.uuidString ?? "None"), PlayerID \(ballData.assignedPlayerId?.uuidString ?? "None")")
+        for (index, ballData) in play.balls.enumerated() {
+            print("[ARPlayView prepareAnimationData] Ball [\(index)] details: ID \(ballData.id), " +
+                  "Pos \(ballData.position.cgPoint), PathID \(ballData.assignedPathId?.uuidString ?? "None"), " +
+                  "PlayerID \(ballData.assignedPlayerId?.uuidString ?? "None")")
 
             let ballEntity: ModelEntity
             do {

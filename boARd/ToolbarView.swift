@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ToolbarView: View {
+    let courtType: CourtType
     @Binding var selectedTool: DrawingTool
     @Binding var selectedPenStyle: PenStyle
     @Binding var playbackState: PlaybackState
@@ -32,7 +33,11 @@ struct ToolbarView: View {
                     Image(systemName: "person.fill").font(.title2).frame(width: 44, height: 44).foregroundColor(.red)
                 }
                 Button(action: onAddBasketball) {
-                    Image(systemName: "basketball.fill").font(.title2).frame(width: 44, height: 44).foregroundColor(.orange)
+                    ballIcon
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 36, height: 36)
+                        .background(Color.clear)
                 }
                 Spacer()
                 Button(action: onAssignPath) {
@@ -46,9 +51,9 @@ struct ToolbarView: View {
                     .cornerRadius(8)
                 }
                 Button(action: onAssignBall) {
-                    Image(systemName: "basketball.fill")
-                        .font(.title2)
-                        .foregroundColor(isAssigningBall ? .white : .primary)
+                    ballIcon
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
                         .frame(width: 36, height: 36)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
@@ -82,6 +87,17 @@ struct ToolbarView: View {
             Button(action: onPlayAnimation) {
                 Image(systemName: "play.fill").font(.title2).frame(width: 44, height: 44).foregroundColor(.green)
             }
+        }
+    }
+    
+    private var ballIcon: Image {
+        switch courtType {
+        case .full, .half:
+            return Image("basketball")
+        case .soccer:
+            return Image("soccerball")
+        case .football:
+            return Image("football")
         }
     }
 }

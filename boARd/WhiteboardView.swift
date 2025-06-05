@@ -14,6 +14,7 @@ struct WhiteboardView: View {
     
     // Add this init method
     init(courtType: CourtType, playToLoad: Models.SavedPlay? = nil, isEditable: Bool = true) {
+        print("[WhiteboardView DEBUG] Initializing with courtType: \(courtType)") // DEBUG PRINT
         self.courtType = courtType
         self.playToLoad = playToLoad
         self.isEditable = isEditable
@@ -36,13 +37,13 @@ struct WhiteboardView: View {
     @State private var drawings: [Drawing] = []
     @State private var currentDrawing: Drawing?
     @State private var players: [PlayerCircle] = []
-    @State private var basketballs: [BasketballItem] = []
+    @State private var balls: [BallItem] = [] // Ensured
     @State private var opponents: [OpponentCircle] = []
     @State private var draggedPlayerIndex: Int?
-    @State private var draggedBasketballIndex: Int?
+    @State private var draggedBallIndex: Int? // Ensured
     @State private var draggedOpponentIndex: Int?
     @State private var isAddingPlayer = false
-    @State private var isAddingBasketball = false
+    @State private var isAddingBall = false // Renamed
     @State private var isAddingOpponent = false
     @State private var currentTouchType: TouchInputType = .unknown
     @State private var showPencilIndicator: Bool = false
@@ -59,7 +60,7 @@ struct WhiteboardView: View {
     @State private var isPathAssignmentMode: Bool = false
     @State private var selectedDrawingId: UUID?
     @State private var originalPlayerPositions: [UUID: CGPoint] = [:] // Use UUID as key
-    @State private var originalBasketballPositions: [CGPoint] = [] // Keep as is for now
+    @State private var originalBallPositions: [CGPoint] = [] // Renamed
     
     // New state variables for centralized animation
     @State private var animationTimer: Timer?
@@ -119,7 +120,7 @@ struct WhiteboardView: View {
 
     // Add state for assign ball mode
     @State private var isAssigningBall = false
-    @State private var selectedBasketballIndex: Int? = nil
+    @State private var selectedBallIndex: Int? = nil // Renamed
 
     // Computed property for the navigation title
     private var currentPlayTitle: String {
@@ -218,6 +219,7 @@ struct WhiteboardView: View {
                     .background(Color(.systemGray3))
                 HStack {
                     ToolbarView(
+                        courtType: courtType, // Pass courtType to ToolbarView
                         selectedTool: $selectedTool,
                         selectedPenStyle: $selectedPenStyle,
                         playbackState: $playbackState,
@@ -226,26 +228,26 @@ struct WhiteboardView: View {
                         isEditable: isEditable,
                         onAddPlayer: {
                             isAddingPlayer = true
-                            isAddingBasketball = false
+                            isAddingBall = false // Renamed
                             isAddingOpponent = false
                         },
-                        onAddBasketball: {
-                            isAddingBasketball = true
+                        onAddBasketball: { // This callback name should be changed to onAddBall in ToolbarView struct def
+                            isAddingBall = true // Renamed
                             isAddingPlayer = false
                             isAddingOpponent = false
                         },
                         onAddOpponent: {
                             isAddingOpponent = true
                             isAddingPlayer = false
-                            isAddingBasketball = false
+                            isAddingBall = false // Renamed
                         },
                         onUndo: {
                             if let lastAction = actions.popLast() {
                                 switch lastAction {
                                 case .drawing:
                                     if !drawings.isEmpty { drawings.removeLast() }
-                                case .basketball:
-                                    if !basketballs.isEmpty { basketballs.removeLast() }
+                                case .ball: // Renamed
+                                    if !balls.isEmpty { balls.removeLast() } // Renamed
                                 case .player:
                                     if !players.isEmpty { players.removeLast() }
                                 case .opponent:
@@ -271,7 +273,7 @@ struct WhiteboardView: View {
                                     selectedTool = prevTool
                                 }
                             }
-                            selectedBasketballIndex = nil
+                            selectedBallIndex = nil // Renamed
                         },
                         isAssigningBall: isAssigningBall,
                         onToolChange: { tool in handleToolChange(tool) },
@@ -353,13 +355,14 @@ struct WhiteboardView: View {
         .alert("Basketball Limit Reached", isPresented: $showBasketballLimitAlert) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("You can only have one basketball on the court at a time.")
+            Text("You can only have one ball on the court at a time.") // Updated message
         }
         .alert("Clear Whiteboard?", isPresented: $showClearConfirmation) {
             Button("Clear", role: .destructive) {
                 drawings.removeAll()
                 players.removeAll()
-                basketballs.removeAll()
+                balls.removeAll()
+                opponents.removeAll() // <-- Now clears opponents too
                 actions.removeAll()
             }
             Button("Cancel", role: .cancel) { }
@@ -470,10 +473,18 @@ struct WhiteboardView: View {
             let courtHeight = geometry.size.height * 0.85 // Changed from (geometry.size.height - 48) * 0.98
             
             // Extract drawing dimensions to simplify expressions
-            let drawingWidth = courtType == .full ? DrawingBoundary.fullCourt.width : DrawingBoundary.halfCourt.width
-            let drawingHeight = courtType == .full ? DrawingBoundary.fullCourt.height : DrawingBoundary.halfCourt.height
-            let drawingOffsetX = courtType == .full ? DrawingBoundary.fullCourt.offsetX : DrawingBoundary.halfCourt.offsetX
-            let drawingOffsetY = courtType == .full ? DrawingBoundary.fullCourt.offsetY : DrawingBoundary.halfCourt.offsetY
+            let (drawingWidth, drawingHeight, drawingOffsetX, drawingOffsetY): (CGFloat, CGFloat, CGFloat, CGFloat) = {
+                switch courtType {
+                case .full:
+                    return (DrawingBoundary.fullCourt.width, DrawingBoundary.fullCourt.height, DrawingBoundary.fullCourt.offsetX, DrawingBoundary.fullCourt.offsetY)
+                case .half:
+                    return (DrawingBoundary.halfCourt.width, DrawingBoundary.halfCourt.height, DrawingBoundary.halfCourt.offsetX, DrawingBoundary.halfCourt.offsetY)
+                case .football:
+                    return (DrawingBoundary.footballField.width, DrawingBoundary.footballField.height, DrawingBoundary.footballField.offsetX, DrawingBoundary.footballField.offsetY)
+                case .soccer:
+                    return (DrawingBoundary.soccerField.width, DrawingBoundary.soccerField.height, DrawingBoundary.soccerField.offsetX, DrawingBoundary.soccerField.offsetY)
+                }
+            }()
             
             // Main drawing area
             courtAndDrawingContent(
@@ -500,8 +511,8 @@ struct WhiteboardView: View {
                 }
                 
                 // Add basketball mode overlay
-                if isAddingBasketball {
-                    addBasketballOverlay(geometry: geometry)
+                if isAddingBall { // Renamed
+                    addBallOverlay(geometry: geometry) // Renamed
                 }
                 
                 // Add opponent mode overlay
@@ -532,11 +543,11 @@ struct WhiteboardView: View {
                     courtType: courtType,
                     drawings: $drawings,
                     currentDrawing: $currentDrawing,
-                    basketballs: $basketballs,
+                    balls: $balls, // Ensured
                     players: $players,
                     selectedTool: $selectedTool,
                     selectedPenStyle: $selectedPenStyle,
-                    draggedBasketballIndex: $draggedBasketballIndex,
+                    draggedBallIndex: $draggedBallIndex, // Ensured
                     draggedPlayerIndex: $draggedPlayerIndex,
                     isPathAssignmentMode: $isPathAssignmentMode,
                     selectedDrawingId: $selectedDrawingId
@@ -553,25 +564,25 @@ struct WhiteboardView: View {
                     drawings: $drawings,
                     onAssignPath: assignPathToPlayer,
                     isAssigningBall: isAssigningBall,
-                    selectedBasketballIndex: $selectedBasketballIndex,
+                    selectedBasketballIndex: $selectedBallIndex, // Renamed
                     onAssignBall: { playerIndex in
-                        if let ballIdx = selectedBasketballIndex {
-                            assignBasketballToPlayer(basketballIndex: ballIdx, playerIndex: playerIndex)
+                        if let ballIdx = selectedBallIndex { // Renamed
+                            assignBallToPlayer(basketballIndex: ballIdx, playerIndex: playerIndex) // Renamed
                             isAssigningBall = false
-                            selectedBasketballIndex = nil
+                            selectedBallIndex = nil // Renamed
                         }
                     }
                 )
                 .zIndex(20)
                 BasketballsView(
                     courtType: courtType,
-                    basketballs: $basketballs,
+                    balls: $balls, // Changed label from basketballs
                     players: $players,
-                    draggedBasketballIndex: $draggedBasketballIndex,
+                    draggedBasketballIndex: $draggedBallIndex, 
                     currentTouchType: $currentTouchType,
                     selectedTool: $selectedTool,
                     isAssigningBall: isAssigningBall,
-                    selectedBasketballIndex: $selectedBasketballIndex
+                    selectedBasketballIndex: $selectedBallIndex // Renamed
                 )
                 .zIndex(selectedTool == .move || playbackState == .playing ? 10 : 2)
                 OpponentsView(
@@ -756,7 +767,18 @@ struct WhiteboardView: View {
         let parentWidth = geometry.size.width
         let parentHeight = geometry.size.height
 
-        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+        let boundary: DrawingBoundary = {
+            switch courtType {
+            case .full:
+                return DrawingBoundary.fullCourt
+            case .half:
+                return DrawingBoundary.halfCourt
+            case .football:
+                return DrawingBoundary.footballField
+            case .soccer:
+                return DrawingBoundary.soccerField
+            }
+        }()
         let drawingWidth = boundary.width
         let drawingHeight = boundary.height
         let drawingOffsetX = boundary.offsetX
@@ -812,7 +834,14 @@ struct WhiteboardView: View {
                             // Check if the tap is within the drawing bounds before adding
                             if relativeX >= 0 && relativeX <= drawingWidth && relativeY >= 0 && relativeY <= drawingHeight {
                                 print("Adjusted Position (Relative to Drawing Area): \(adjustedPosition)")
-                                addPlayerAt(position: adjustedPosition)
+                                // Prompt for label if soccer or football
+                                if courtType == .soccer || courtType == .football {
+                                    pendingPlayerPosition = adjustedPosition
+                                    playerLabelInput = ""
+                                    showPlayerLabelPrompt = true
+                                } else {
+                                    addPlayerAt(position: adjustedPosition)
+                                }
                             } else {
                                 print("Tap outside drawing bounds.")
                             }
@@ -820,16 +849,42 @@ struct WhiteboardView: View {
                         }
                 )
         }
+        // Player label prompt alert
+        .alert("Enter Player Label", isPresented: $showPlayerLabelPrompt, actions: {
+            TextField("e.g. GK, CB, QB", text: $playerLabelInput)
+            Button("Add") {
+                if let pos = pendingPlayerPosition {
+                    addPlayerAt(position: pos, customLabel: playerLabelInput)
+                }
+                pendingPlayerPosition = nil
+                playerLabelInput = ""
+            }
+            Button("Cancel", role: .cancel) {
+                pendingPlayerPosition = nil
+                playerLabelInput = ""
+            }
+        })
     }
     
     // Add basketball overlay
     @ViewBuilder
-    private func addBasketballOverlay(geometry: GeometryProxy) -> some View {
+    private func addBallOverlay(geometry: GeometryProxy) -> some View {
         // Retrieve necessary dimensions and offsets (same logic as addPlayerOverlay)
         let parentWidth = geometry.size.width
         let parentHeight = geometry.size.height
 
-        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+        let boundary: DrawingBoundary = {
+            switch courtType {
+            case .full:
+                return DrawingBoundary.fullCourt
+            case .half:
+                return DrawingBoundary.halfCourt
+            case .football:
+                return DrawingBoundary.footballField
+            case .soccer:
+                return DrawingBoundary.soccerField
+            }
+        }()
         let drawingWidth = boundary.width
         let drawingHeight = boundary.height
         let drawingOffsetX = boundary.offsetX
@@ -847,12 +902,12 @@ struct WhiteboardView: View {
             Color.black.opacity(0.3)
                 .edgesIgnoringSafeArea(.all)
                 .onTapGesture { // Tap outside the gesture area to cancel
-                    isAddingBasketball = false
+                    isAddingBall = false // Renamed
                 }
             
             // Informational text
             VStack {
-                Text("Tap within the court to add basketball")
+                Text("Tap within the court to add ball") // Renamed
                     .font(.headline)
                     .foregroundColor(.white)
                     .padding()
@@ -879,9 +934,9 @@ struct WhiteboardView: View {
 
                             // Check if the tap is within bounds
                             if relativeX >= 0 && relativeX <= drawingWidth && relativeY >= 0 && relativeY <= drawingHeight {
-                                addBasketballAt(position: adjustedPosition)
+                                addBallAt(position: adjustedPosition) // Renamed
                             }
-                            isAddingBasketball = false
+                            isAddingBall = false // Renamed
                         }
                 )
         }
@@ -912,7 +967,7 @@ struct WhiteboardView: View {
 
         // If we're in drawing mode with a pencil, and not currently dragging something, handle drawing
         // Ensure not accidentally dragging while drawing
-        if touchType == .pencil && (selectedTool == .pen || selectedTool == .arrow) && draggedPlayerIndex == nil && draggedBasketballIndex == nil && !isPathAssignmentMode {
+        if touchType == .pencil && (selectedTool == .pen || selectedTool == .arrow) && draggedPlayerIndex == nil && draggedBallIndex == nil && !isPathAssignmentMode { // Renamed draggedBasketballIndex
 
             // Process each location received (includes coalesced touches)
             if !locations.isEmpty {
@@ -977,13 +1032,13 @@ struct WhiteboardView: View {
             draggedPlayerIndex = nil // Reset drag index
         }
         // Check if we WERE dragging a basketball
-        if let basketballIndex = draggedBasketballIndex {
-             print("handleTouchEnded: Finalizing move for basketball \\(basketballIndex)")
+        if let basketballIndex = draggedBallIndex { // This is draggedBallIndex now, check where it's declared and used
+             print("handleTouchEnded: Finalizing move for basketball \\(basketballIndex)") // Message needs update
              // Update normalized position one last time
-             if basketballIndex >= 0 && basketballIndex < basketballs.count {
-                 updateNormalizedPosition(forBasketball: basketballIndex, location: basketballs[basketballIndex].position)
+             if basketballIndex >= 0 && basketballIndex < balls.count { // Renamed
+                 updateNormalizedPosition(forBall: basketballIndex, location: balls[basketballIndex].position) // Renamed
              }
-            draggedBasketballIndex = nil // Reset drag index
+            draggedBallIndex = nil // Renamed
         }
     }
 
@@ -1008,7 +1063,18 @@ struct WhiteboardView: View {
     
     private func startNewDrawing(at point: CGPoint) {
         // Get the drawing boundary for normalization
-        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+        let boundary: DrawingBoundary = {
+            switch courtType {
+            case .full:
+                return DrawingBoundary.fullCourt
+            case .half:
+                return DrawingBoundary.halfCourt
+            case .football:
+                return DrawingBoundary.footballField
+            case .soccer:
+                return DrawingBoundary.soccerField
+            }
+        }()
         
         // The 'point' is now relative to the inner drawing ZStack. Use it directly.
         let currentPoint = point
@@ -1045,7 +1111,18 @@ struct WhiteboardView: View {
         guard var drawing = currentDrawing else { return }
         
         // Get the drawing boundary for normalization
-        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+        let boundary: DrawingBoundary = {
+            switch courtType {
+            case .full:
+                return DrawingBoundary.fullCourt
+            case .half:
+                return DrawingBoundary.halfCourt
+            case .football:
+                return DrawingBoundary.footballField
+            case .soccer:
+                return DrawingBoundary.soccerField
+            }
+        }()
         
         // The 'point' is now relative to the inner drawing ZStack. Use it directly.
         let currentPoint = point
@@ -1129,15 +1206,32 @@ struct WhiteboardView: View {
         lastTouchLocation = currentPoint // Use direct point
     }
     
-    private func addPlayerAt(position: CGPoint) {
+    private func addPlayerAt(position: CGPoint, customLabel: String? = nil) {
         // Check if we've reached the player limit
-        if players.count >= 5 {
+        let maxPlayers: Int = {
+            switch courtType {
+            case .full, .half: return 5
+            case .soccer, .football: return 11
+            }
+        }()
+        if players.count >= maxPlayers {
             showPlayerLimitAlert = true
             return
         }
         
         // Get the boundary for normalization
-        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+        let boundary: DrawingBoundary = {
+            switch courtType {
+            case .full:
+                return DrawingBoundary.fullCourt
+            case .half:
+                return DrawingBoundary.halfCourt
+            case .football:
+                return DrawingBoundary.footballField
+            case .soccer:
+                return DrawingBoundary.soccerField
+            }
+        }()
         
         // The 'position' received is now already adjusted relative to the drawing area.
         // Use the position directly.
@@ -1148,8 +1242,9 @@ struct WhiteboardView: View {
         let normalizedY = adjustedPosition.y / boundary.height
         
         let newPlayer = PlayerCircle(
-            position: adjustedPosition, 
-            number: players.count + 1, 
+            position: adjustedPosition,
+            number: players.count + 1,
+            label: (courtType == .soccer || courtType == .football) ? (customLabel?.isEmpty == false ? customLabel : nil) : nil,
             normalizedPosition: CGPoint(x: normalizedX, y: normalizedY)
         )
         players.append(newPlayer)
@@ -1158,31 +1253,35 @@ struct WhiteboardView: View {
         isDirty = true
     }
     
-    private func addBasketballAt(position: CGPoint) {
-        // Check if we've reached the basketball limit (only 1)
-        if basketballs.count >= 1 {
+    private func addBallAt(position: CGPoint) {
+        if balls.count >= 1 {
             showBasketballLimitAlert = true
             return
         }
         
-        // Get the boundary for normalization
-        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
-        
-        // The 'position' received is now already adjusted relative to the drawing area.
-        // Use the position directly.
+        let boundary: DrawingBoundary = {
+            switch courtType {
+            case .full:
+                return DrawingBoundary.fullCourt
+            case .half:
+                return DrawingBoundary.halfCourt
+            case .football:
+                return DrawingBoundary.footballField
+            case .soccer:
+                return DrawingBoundary.soccerField
+            }
+        }()
         let adjustedPosition = position
-        
-        // Calculate normalized position relative to the drawing area dimensions
         let normalizedX = adjustedPosition.x / boundary.width
         let normalizedY = adjustedPosition.y / boundary.height
         
-        let newBasketball = BasketballItem(
+        let newBall = BallItem(
             position: adjustedPosition,
-            normalizedPosition: CGPoint(x: normalizedX, y: normalizedY)
+            normalizedPosition: CGPoint(x: normalizedX, y: normalizedY),
+            ballKind: currentBallKind() // Call to currentBallKind()
         )
-        basketballs.append(newBasketball)
-        // Add to actions array
-        actions.append(.basketball(newBasketball))
+        balls.append(newBall)
+        actions.append(.ball(newBall))
         isDirty = true
     }
     
@@ -1207,10 +1306,10 @@ struct WhiteboardView: View {
         // If activating path assignment, turn off assign ball mode
         if willBeActive {
             if isAssigningBall {
-                isAssigningBall = false
+                isAssigningBall = false // Ensure this is off
             }
             previousTool = selectedTool
-            selectedTool = .move
+            selectedTool = .move // Should this be a different tool?
             
             // Log debug info
             print("=========================================")
@@ -1332,11 +1431,11 @@ struct WhiteboardView: View {
             }
         }
         // Move assigned basketballs with their players
-        for i in basketballs.indices {
-            if let assignedId = basketballs[i].assignedPlayerId,
+        for i in balls.indices { // Renamed
+            if let assignedId = balls[i].assignedPlayerId, // Renamed
                let player = players.first(where: { $0.id == assignedId }) {
-                basketballs[i].position = player.position
-                updateNormalizedPosition(forBasketball: i, location: player.position)
+                balls[i].position = player.position // Renamed
+                updateNormalizedPosition(forBall: i, location: player.position) // Renamed
             }
         }
         playbackProgress = maxProgress
@@ -1405,8 +1504,7 @@ struct WhiteboardView: View {
             animationTimer = nil
             playerAnimationData.removeAll()
             originalPlayerPositions.removeAll()
-            // Reset basketball positions (if using)
-            // originalBasketballPositions.removeAll()
+            originalBallPositions.removeAll() // Renamed and ensure it's cleared
             // Reset highlighted paths
             for i in drawings.indices {
                 drawings[i].isHighlightedDuringAnimation = false
@@ -1518,7 +1616,7 @@ struct WhiteboardView: View {
 
          // Simplified Debug Logging
          if debugMode {
-              print("handleMove: loc=\(location), draggingP=\(String(describing: draggedPlayerIndex)), draggingB=\(String(describing: draggedBasketballIndex))")
+              print("handleMove: loc=\(location), draggingP=\(String(describing: draggedPlayerIndex)), draggingB=\(String(describing: draggedBallIndex))") // Renamed draggedBasketballIndex
          }
 
          // If currently dragging a player
@@ -1537,22 +1635,22 @@ struct WhiteboardView: View {
          }
 
          // If currently dragging a basketball
-         if let basketballIndex = draggedBasketballIndex {
+         if let basketballIndex = draggedBallIndex { // Renamed
              // Make sure the index is in range
-             if basketballIndex >= 0 && basketballIndex < basketballs.count {
+             if basketballIndex >= 0 && basketballIndex < balls.count { // Renamed
                  // Continue moving the currently dragged basketball
-                 basketballs[basketballIndex].position = location
-                 updateNormalizedPosition(forBasketball: basketballIndex, location: location)
+                 balls[basketballIndex].position = location // Renamed
+                 updateNormalizedPosition(forBall: basketballIndex, location: location) // Renamed
                  return // Already handled drag update
              } else {
                  // Index out of range, reset it
-                 print("WARNING: Basketball index \\(basketballIndex) out of range, resetting drag")
-                 draggedBasketballIndex = nil
+                 print("WARNING: Basketball index \\(basketballIndex) out of range, resetting drag") // Message needs update
+                 draggedBallIndex = nil // Renamed
              }
          }
 
          // --- Hit Testing: Only if NOT currently dragging anything ---
-         guard draggedPlayerIndex == nil && draggedBasketballIndex == nil else {
+         guard draggedPlayerIndex == nil && draggedBallIndex == nil else {
               // Already handled drag update above, no need for hit testing
               return
          }
@@ -1570,13 +1668,13 @@ struct WhiteboardView: View {
          }
 
          // Check for basketballs if no player was hit
-         for (index, basketball) in basketballs.enumerated() {
+         for (index, basketball) in balls.enumerated() { // Renamed
               let basketballFrame = CGRect(x: basketball.position.x - 35, y: basketball.position.y - 35, width: 70, height: 70)
              if basketballFrame.contains(location) {
-                  if debugMode { print("handleMove: FOUND HIT! Starting to move basketball \\(index)") }
-                 draggedBasketballIndex = index
-                 basketballs[index].position = location // Update position immediately
-                 updateNormalizedPosition(forBasketball: index, location: location)
+                  if debugMode { print("handleMove: FOUND HIT! Starting to move basketball \\(index)") } // Message needs update
+                 draggedBallIndex = index // Renamed
+                 balls[index].position = location // Renamed
+                 updateNormalizedPosition(forBall: index, location: location) // Renamed
                  return // Found a basketball, start dragging
              }
          }
@@ -1588,11 +1686,11 @@ struct WhiteboardView: View {
     
     private func handleToolChange(_ tool: DrawingTool) {
         // Don't do anything if the same tool is tapped unless it's an 'add' tool
-        if selectedTool == tool && tool != .addPlayer && tool != .addBasketball {
-             print("Tool tapped, but it's the same non-add tool (\\(tool)). No state change.")
+        if selectedTool == tool && tool != .addPlayer && tool != .addBall { // Renamed
+             print("Tool tapped, but it's the same non-add tool (\\(tool)). No state change.") // Reduce log noise
              // Ensure add modes are off if tapping same non-add tool
              isAddingPlayer = false
-             isAddingBasketball = false
+             isAddingBall = false // Renamed
             return
         }
 
@@ -1622,7 +1720,7 @@ struct WhiteboardView: View {
          if previousSelectedTool == .move {
             // No need to check the new tool, just reset if old was move
             draggedPlayerIndex = nil
-            draggedBasketballIndex = nil
+            draggedBallIndex = nil // Renamed
             print("Reset drag indices because switching AWAY from move tool")
         }
 
@@ -1630,16 +1728,16 @@ struct WhiteboardView: View {
         // Activate Add Modes or ensure they are off
          if tool == .addPlayer {
              isAddingPlayer = true
-             isAddingBasketball = false
+             isAddingBall = false // Renamed
              print("Activating Add Player overlay")
-         } else if tool == .addBasketball {
-             isAddingBasketball = true
+         } else if tool == .addBall { // Renamed
+             isAddingBall = true // Renamed
              isAddingPlayer = false
-             print("Activating Add Basketball overlay")
+             print("Activating Add Basketball overlay") // Message needs update
          } else {
              // Ensure add modes are off for any other tool
              isAddingPlayer = false
-             isAddingBasketball = false
+             isAddingBall = false // Renamed
              // print("Add modes deactivated for tool \\(tool)") // Can add if needed
          }
 
@@ -1653,14 +1751,14 @@ struct WhiteboardView: View {
 
 
         // Final debug log for confirmation
-        print("Tool change complete. Current tool: \\(selectedTool), isAddingPlayer: \\(isAddingPlayer), isAddingBasketball: \\(isAddingBasketball)")
+        print("Tool change complete. Current tool: \\(selectedTool), isAddingPlayer: \\(isAddingPlayer), isAddingBasketball: \\(isAddingBall)")
     }
 
     private func loadPlayData(_ play: Models.SavedPlay) {
         // Convert and update state variables
         self.drawings = play.drawings.map { SavedPlayService.convertToDrawing(drawingData: $0) }
         self.players = play.players.map { SavedPlayService.convertToPlayer(playerData: $0) }
-        self.basketballs = play.basketballs.map { SavedPlayService.convertToBasketball(basketballData: $0) }
+        self.balls = play.balls.map { SavedPlayService.convertToBallItem(ballData: $0) } // Renamed
         self.opponents = play.opponents.map { SavedPlayService.convertToOpponent(opponentData: $0) } // Added opponent loading
         
         // Set play name if needed (you might want to add a @State var for this)
@@ -1672,18 +1770,40 @@ struct WhiteboardView: View {
     // Add helper functions for normalized position updates
     private func updateNormalizedPosition(forPlayer index: Int, location: CGPoint) {
         guard index >= 0 && index < players.count else { return }
-        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+        let boundary: DrawingBoundary = {
+            switch courtType {
+            case .full:
+                return DrawingBoundary.fullCourt
+            case .half:
+                return DrawingBoundary.halfCourt
+            case .football:
+                return DrawingBoundary.footballField
+            case .soccer:
+                return DrawingBoundary.soccerField
+            }
+        }()
         let normalizedX = location.x / boundary.width
         let normalizedY = location.y / boundary.height
         players[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
     }
 
-    private func updateNormalizedPosition(forBasketball index: Int, location: CGPoint) {
-         guard index >= 0 && index < basketballs.count else { return }
-        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+    private func updateNormalizedPosition(forBall index: Int, location: CGPoint) { // Renamed
+         guard index >= 0 && index < balls.count else { return } // Renamed
+        let boundary: DrawingBoundary = {
+            switch courtType {
+            case .full:
+                return DrawingBoundary.fullCourt
+            case .half:
+                return DrawingBoundary.halfCourt
+            case .football:
+                return DrawingBoundary.footballField
+            case .soccer:
+                return DrawingBoundary.soccerField
+            }
+        }()
         let normalizedX = location.x / boundary.width
         let normalizedY = location.y / boundary.height
-        basketballs[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY)
+        balls[index].normalizedPosition = CGPoint(x: normalizedX, y: normalizedY) // Renamed
     }
 
     // Add the actual save function
@@ -1691,54 +1811,61 @@ struct WhiteboardView: View {
         // 1. Gather Data
         let currentDrawings = self.drawings
         let currentPlayers = self.players
-        let currentBasketballs = self.basketballs
-        let currentOpponents = self.opponents // Gather opponents
-        let name = self.playNameInput.trimmingCharacters(in: .whitespacesAndNewlines) // Trim whitespace
-        let courtTypeString = self.courtType == .full ? "full" : "half"
+        let currentBalls = self.balls
+        let currentOpponents = self.opponents
+        let name = self.playNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let courtTypeString: String
+        switch self.courtType {
+        case .full: courtTypeString = "Full Court"
+        case .half: courtTypeString = "Half Court"
+        case .football: courtTypeString = "Football Field"
+        case .soccer: courtTypeString = "Soccer Pitch"
+        }
 
-        // Ensure name is not empty after trimming
         guard !name.isEmpty else {
             print("Save cancelled: Play name is empty.")
-            // Optionally show an alert to the user
+            return
+        }
+
+        // Ensure user is logged in before proceeding
+        guard let authenticatedUserID = Auth.auth().currentUser?.uid else {
+            print("Error: User not logged in. Cannot save play.")
+            self.saveErrorMessage = "You must be logged in to save plays."
+            self.showSaveErrorAlert = true
             return
         }
 
         // 2. Convert Data
-        let drawingData = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
-        let playerData = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
-        let basketballData = currentBasketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
-        let opponentData = currentOpponents.map { SavedPlayService.convertToOpponentData(opponent: $0) } // Convert opponents
+        let drawingData: [Models.DrawingData] = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
+        let playerData: [Models.PlayerData] = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
+        let ballData: [Models.BallData] = currentBalls.map { SavedPlayService.convertToBallData(ball: $0) }
+        let opponentData: [Models.OpponentData] = currentOpponents.map { SavedPlayService.convertToOpponentData(opponent: $0) }
 
         // 3. Create SavedPlay Object
-        // Use the existing play's ID and dateCreated if editing, otherwise generate new
-        let newPlay = Models.SavedPlay(
-            firestoreID: playToLoad?.firestoreID, // Preserve Firestore ID if editing
+        let newPlay: Models.SavedPlay = Models.SavedPlay(
+            firestoreID: playToLoad?.firestoreID, 
             id: playToLoad?.id ?? UUID(),
-            // teamID will be set by the service or passed in
+            userID: authenticatedUserID, // Use guarded non-optional userID
+            teamID: playToLoad?.teamID, 
             name: name,
             dateCreated: playToLoad?.dateCreated ?? Date(),
             lastModified: Date(),
-            courtType: courtTypeString,
+            courtType: courtTypeString, 
             drawings: drawingData,
             players: playerData,
-            basketballs: basketballData,
-            opponents: opponentData // Use actual opponent data
+            balls: ballData, 
+            opponents: opponentData
         )
 
         // Print success message *before* attempting to persist
         print("Preparing to save Play '\(name)' with ID: \(newPlay.id)")
 
         // 4. Persist
-        guard let userID = Auth.auth().currentUser?.uid else {
-            print("Error: User not logged in. Cannot save play.")
-            saveErrorMessage = "You must be logged in to save plays."
-            showSaveErrorAlert = true
-            return
-        }
+        // The guard for authenticatedUserID is now at the beginning of the function.
         
         let teamID = UserService.shared.getCurrentUserTeamID()
         
-        SavedPlayService.shared.savePlay(newPlay, forUserID: userID, teamID: teamID) { [self] error in
+        SavedPlayService.shared.savePlay(newPlay, forUserID: authenticatedUserID, teamID: teamID) { [self] error in // Use authenticatedUserID
             if let error = error {
                 print("Error saving play: \(error.localizedDescription)")
                 self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
@@ -1804,7 +1931,18 @@ struct WhiteboardView: View {
     private func addOpponentOverlay(geometry: GeometryProxy) -> some View {
         let parentWidth = geometry.size.width
         let parentHeight = geometry.size.height
-        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+        let boundary: DrawingBoundary = {
+            switch courtType {
+            case .full:
+                return DrawingBoundary.fullCourt
+            case .half:
+                return DrawingBoundary.halfCourt
+            case .football:
+                return DrawingBoundary.footballField
+            case .soccer:
+                return DrawingBoundary.soccerField
+            }
+        }()
         let drawingWidth = boundary.width
         let drawingHeight = boundary.height
         let drawingOffsetX = boundary.offsetX
@@ -1845,7 +1983,18 @@ struct WhiteboardView: View {
     }
 
     private func addOpponentAt(position: CGPoint) {
-        let boundary = courtType == .full ? DrawingBoundary.fullCourt : DrawingBoundary.halfCourt
+        let boundary: DrawingBoundary = {
+            switch courtType {
+            case .full:
+                return DrawingBoundary.fullCourt
+            case .half:
+                return DrawingBoundary.halfCourt
+            case .football:
+                return DrawingBoundary.footballField
+            case .soccer:
+                return DrawingBoundary.soccerField
+            }
+        }()
         let adjustedPosition = position
         let normalizedX = adjustedPosition.x / boundary.width
         let normalizedY = adjustedPosition.y / boundary.height
@@ -1970,44 +2119,56 @@ struct WhiteboardView: View {
         // 1. Gather Data
         let currentDrawings = self.drawings
         let currentPlayers = self.players
-        let currentBasketballs = self.basketballs
-        let currentOpponents = self.opponents // Gather opponents
+        let currentBalls = self.balls
+        let currentOpponents = self.opponents
         let name = self.playNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        let courtTypeString = self.courtType == .full ? "full" : "half"
+        let courtTypeString: String
+        switch self.courtType {
+        case .full: courtTypeString = "Full Court"
+        case .half: courtTypeString = "Half Court"
+        case .football: courtTypeString = "Football Field"
+        case .soccer: courtTypeString = "Soccer Pitch"
+        }
         guard !name.isEmpty else { return }
-        let drawingData = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
-        let playerData = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
-        let basketballData = currentBasketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
-        let opponentData = currentOpponents.map { SavedPlayService.convertToOpponentData(opponent: $0) } // Convert opponents
-        let newPlay = Models.SavedPlay(
-            id: UUID(), // Always new UUID
-            // teamID will be set by the service or passed in
+
+        // Ensure user is logged in and get their ID and current team ID
+        guard let authenticatedUserID = Auth.auth().currentUser?.uid else {
+            print("Error: User not logged in. Cannot save new play.")
+            self.saveErrorMessage = "You must be logged in to save plays."
+            self.showSaveErrorAlert = true
+            return
+        }
+        let currentTeamID = UserService.shared.getCurrentUserTeamID() // May be nil
+
+        // 2. Convert Data
+        let drawingData: [Models.DrawingData] = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
+        let playerData: [Models.PlayerData] = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
+        let ballData: [Models.BallData] = currentBalls.map { SavedPlayService.convertToBallData(ball: $0) }
+        let opponentData: [Models.OpponentData] = currentOpponents.map { SavedPlayService.convertToOpponentData(opponent: $0) }
+        
+        // 3. Create SavedPlay Object for "Save As"
+        let newPlay: Models.SavedPlay = Models.SavedPlay(
+            firestoreID: nil,                      // Always nil for a new play document
+            id: UUID(),                            // Always a new UUID for a new play
+            userID: authenticatedUserID,           // Current user's ID (non-optional)
+            teamID: currentTeamID,                 // Current user's team ID (can be nil)
             name: name,
-            dateCreated: Date(),
-            lastModified: Date(),
+            dateCreated: Date(),                   // Current date for new play
+            lastModified: Date(),                  // Current date for new play
             courtType: courtTypeString,
             drawings: drawingData,
             players: playerData,
-            basketballs: basketballData,
-            opponents: opponentData // Use actual opponent data
+            balls: ballData,
+            opponents: opponentData
         )
         
-        guard let userID = Auth.auth().currentUser?.uid else {
-            print("Error: User not logged in. Cannot save play.")
-            saveErrorMessage = "You must be logged in to save plays."
-            showSaveErrorAlert = true
-            return
-        }
-        
-        let teamID = UserService.shared.getCurrentUserTeamID()
-        
-        SavedPlayService.shared.savePlay(newPlay, forUserID: userID, teamID: teamID) { [self] error in
+        SavedPlayService.shared.savePlay(newPlay, forUserID: authenticatedUserID, teamID: currentTeamID) { [self] error in
             if let error = error {
                 print("Error saving new play: \(error.localizedDescription)")
                 self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
                 self.showSaveErrorAlert = true
             } else {
-                print("Play '\(name)' saved successfully as new play with ID: \(newPlay.id), TeamID: \(teamID ?? "None")")
+                print("Play '\(name)' saved successfully as new play with ID: \(newPlay.id), TeamID: \(currentTeamID ?? "None")")
                 self.playNameInput = "" // Clear input
                 self.showingSaveAsAlert = false // Dismiss sheet
                 self.isDirty = false // Mark as not dirty
@@ -2023,44 +2184,55 @@ struct WhiteboardView: View {
     private func saveCurrentPlayImmediate(onSuccess: (() -> Void)? = nil) {
         let currentDrawings = self.drawings
         let currentPlayers = self.players
-        let currentBasketballs = self.basketballs
-        let currentOpponents = self.opponents // Gather opponents
+        let currentBalls = self.balls
+        let currentOpponents = self.opponents
         let name: String = playToLoad?.name ?? playNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        let courtTypeString = self.courtType == .full ? "full" : "half"
+        let courtTypeString: String
+        switch self.courtType {
+        case .full: courtTypeString = "Full Court"
+        case .half: courtTypeString = "Half Court"
+        case .football: courtTypeString = "Football Field"
+        case .soccer: courtTypeString = "Soccer Pitch"
+        }
         guard !name.isEmpty else { return }
-        let drawingData = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
-        let playerData = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
-        let basketballData = currentBasketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
-        let opponentData = currentOpponents.map { SavedPlayService.convertToOpponentData(opponent: $0) } // Convert opponents
-        let newPlay = Models.SavedPlay(
+
+        // Ensure user is logged in before proceeding
+        guard let authenticatedUserID = Auth.auth().currentUser?.uid else {
+            print("Error: User not logged in. Cannot save play immediately.")
+            self.saveErrorMessage = "You must be logged in to save plays."
+            self.showSaveErrorAlert = true
+            return
+        }
+
+        let drawingData: [Models.DrawingData] = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
+        let playerData: [Models.PlayerData] = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
+        let ballData: [Models.BallData] = currentBalls.map { SavedPlayService.convertToBallData(ball: $0) }
+        let opponentData: [Models.OpponentData] = currentOpponents.map { SavedPlayService.convertToOpponentData(opponent: $0) }
+        let newPlay: Models.SavedPlay = Models.SavedPlay(
             firestoreID: playToLoad?.firestoreID,
             id: playToLoad?.id ?? UUID(),
-            // teamID will be set by the service or passed in
+            userID: authenticatedUserID, // Use guarded non-optional userID
+            teamID: playToLoad?.teamID, 
             name: name,
             dateCreated: playToLoad?.dateCreated ?? Date(),
             lastModified: Date(),
-            courtType: courtTypeString,
+            courtType: courtTypeString, 
             drawings: drawingData,
             players: playerData,
-            basketballs: basketballData,
-            opponents: opponentData // Use actual opponent data
+            balls: ballData, 
+            opponents: opponentData 
         )
         
-        guard let userID = Auth.auth().currentUser?.uid else {
-            print("Error: User not logged in. Cannot save play immediately.")
-            // Handle not being logged in - perhaps show an alert or prevent action
-            return
-        }
-        let teamID = UserService.shared.getCurrentUserTeamID()
+        let currentTeamID = UserService.shared.getCurrentUserTeamID() // Renamed from teamID to avoid conflict
 
-        SavedPlayService.shared.savePlay(newPlay, forUserID: userID, teamID: teamID) { [self] error in
+        SavedPlayService.shared.savePlay(newPlay, forUserID: authenticatedUserID, teamID: currentTeamID) { [self] error in // Use authenticatedUserID and currentTeamID
              if let error = error {
                 print("Error saving play immediately: \(error.localizedDescription)")
                 // Update UI to show error if necessary
                 self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
                 self.showSaveErrorAlert = true
             } else {
-                print("Play '\(name)' saved immediately. ID: \(newPlay.id), TeamID: \(teamID ?? "None")")
+                print("Play '\(name)' saved immediately. ID: \(newPlay.id), TeamID: \(currentTeamID ?? "None")")
                 self.isDirty = false
                 self.deleteDraft()
                 NotificationCenter.default.post(name: NSNotification.Name("PlaySavedNotification"), object: nil)
@@ -2072,17 +2244,26 @@ struct WhiteboardView: View {
     // --- Auto-Save/Drafts ---
     private func saveDraft() {
         guard isDirty else { return } // Only save if there are unsaved changes
-        let drawingData = self.drawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
-        let playerData = self.players.map { SavedPlayService.convertToPlayerData(player: $0) }
-        let basketballData = self.basketballs.map { SavedPlayService.convertToBasketballData(basketball: $0) }
-        let opponentData = self.opponents.map { SavedPlayService.convertToOpponentData(opponent: $0) } // Added opponents
+        let drawingData: [Models.DrawingData] = self.drawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
+        let playerData: [Models.PlayerData] = self.players.map { SavedPlayService.convertToPlayerData(player: $0) }
+        let ballData: [Models.BallData] = self.balls.map { SavedPlayService.convertToBallData(ball: $0) }
+        let opponentData: [Models.OpponentData] = self.opponents.map { SavedPlayService.convertToOpponentData(opponent: $0) }
+        
+        let courtTypeString: String
+        switch self.courtType {
+        case .full: courtTypeString = "Full Court"
+        case .half: courtTypeString = "Half Court"
+        case .football: courtTypeString = "Football Field"
+        case .soccer: courtTypeString = "Soccer Pitch"
+        }
+
         let draft = DraftPlay(
             drawings: drawingData,
             players: playerData,
-            basketballs: basketballData,
+            balls: ballData, // Changed from currentBasketballs
             opponents: opponentData, // Added opponents
             name: playToLoad?.name ?? playNameInput,
-            courtType: self.courtType == .full ? "full" : "half"
+            courtType: courtTypeString // Use new courtTypeString
         )
         if let data = try? JSONEncoder().encode(draft) {
             UserDefaults.standard.set(data, forKey: draftKey)
@@ -2108,30 +2289,32 @@ struct WhiteboardView: View {
     private struct DraftPlay: Codable {
         var drawings: [Models.DrawingData]
         var players: [Models.PlayerData]
-        var basketballs: [Models.BasketballData]
+        var balls: [Models.BallData] // Renamed
         var opponents: [Models.OpponentData] // Added opponents
         var name: String
-        var courtType: String // "full" or "half"
+        var courtType: String // "full" or "half" -> Now "Full Court", "Half Court", etc.
     }
 
     private func restoreFromDraft(_ draft: DraftPlay) {
         self.drawings = draft.drawings.map { SavedPlayService.convertToDrawing(drawingData: $0) }
         self.players = draft.players.map { SavedPlayService.convertToPlayer(playerData: $0) }
-        self.basketballs = draft.basketballs.map { SavedPlayService.convertToBasketball(basketballData: $0) }
+        self.balls = draft.balls.map { SavedPlayService.convertToBallItem(ballData: $0) } // Renamed
         self.opponents = draft.opponents.map { SavedPlayService.convertToOpponent(opponentData: $0) } // Added opponents
         self.playNameInput = draft.name
-        // courtType is fixed for this view
+        // courtType is fixed for this view, but if draft stores specific string, ensure it matches enum
+        // For example, convert draft.courtType string back to CourtType enum and set self.courtType
+        // This might not be necessary if courtType is passed on WhiteboardView init and draft is specific to that
         isDirty = true
     }
 
     // Assign a basketball to a player
-    private func assignBasketballToPlayer(basketballIndex: Int, playerIndex: Int) {
-        guard basketballIndex >= 0, basketballIndex < basketballs.count,
+    private func assignBallToPlayer(basketballIndex: Int, playerIndex: Int) { // Renamed function and param
+        guard basketballIndex >= 0, basketballIndex < balls.count, // Renamed
               playerIndex >= 0, playerIndex < players.count else { return }
-        basketballs[basketballIndex].assignedPlayerId = players[playerIndex].id
+        balls[basketballIndex].assignedPlayerId = players[playerIndex].id // Renamed
         // Move the basketball to the player's position immediately
-        basketballs[basketballIndex].position = players[playerIndex].position
-        updateNormalizedPosition(forBasketball: basketballIndex, location: players[playerIndex].position)
+        balls[basketballIndex].position = players[playerIndex].position // Renamed
+        updateNormalizedPosition(forBall: basketballIndex, location: players[playerIndex].position) // Renamed
     }
 
     func loadPlay(play: Models.SavedPlay) {
@@ -2189,8 +2372,8 @@ struct WhiteboardView: View {
                 }
 
                 // 4. Draw Basketballs (Pass cgContext)
-                basketballs.forEach { basketballItem in
-                    drawBasketballForPDF(basketball: basketballItem, context: cgContext, pdfPageRect: pageRect, courtContentSwiftUISize: courtContentSwiftUISize)
+                balls.forEach { ballItem in // Renamed
+                    drawBallForPDF(ball: ballItem, context: cgContext, pdfPageRect: pageRect, courtContentSwiftUISize: courtContentSwiftUISize) // Renamed
                 }
                 
                 // 5. Draw Drawings (Paths and Arrows) (Pass cgContext)
@@ -2273,28 +2456,33 @@ struct WhiteboardView: View {
 
     // Helper function to draw a single basketball onto the PDF
     // Updated to accept CGContext directly
-    private func drawBasketballForPDF(basketball: BasketballItem, context cgContext: CGContext, pdfPageRect: CGRect, courtContentSwiftUISize: CGSize) {
+    private func drawBallForPDF(ball: BallItem, context cgContext: CGContext, pdfPageRect: CGRect, courtContentSwiftUISize: CGSize) { // Renamed
         let ballSizeOnPDF: CGFloat = 15 
         
-        let scaledX = (basketball.position.x / courtContentSwiftUISize.width) * pdfPageRect.width
-        let scaledY = (basketball.position.y / courtContentSwiftUISize.height) * pdfPageRect.height
+        let scaledX = (ball.position.x / courtContentSwiftUISize.width) * pdfPageRect.width // Renamed
+        let scaledY = (ball.position.y / courtContentSwiftUISize.height) * pdfPageRect.height // Renamed
         let positionOnPDF = CGPoint(x: scaledX, y: scaledY)
 
-        if let ballImage = UIImage(named: "basketball_icon") { 
+        // Use ball.ballKind to select the correct image name
+        // e.g., "basketball_icon", "football_icon", "soccerball_icon"
+        // Ensure these assets exist in your project
+        let iconName = "\(ball.ballKind)_icon" // Convention for icon names
+
+        if let ballImage = UIImage(named: iconName) { 
             let imageRect = CGRect(x: positionOnPDF.x - ballSizeOnPDF / 2,
                                    y: positionOnPDF.y - ballSizeOnPDF / 2,
                                    width: ballSizeOnPDF,
                                    height: ballSizeOnPDF)
             ballImage.draw(in: imageRect)
         } else {
-            cgContext.setFillColor(UIColor.orange.cgColor)
+            cgContext.setFillColor(UIColor.orange.cgColor) // Default color if icon not found
             let ballRect = CGRect(x: positionOnPDF.x - ballSizeOnPDF / 2,
                                   y: positionOnPDF.y - ballSizeOnPDF / 2,
                                   width: ballSizeOnPDF,
                                   height: ballSizeOnPDF)
             cgContext.fillEllipse(in: ballRect)
             if debugMode { 
-                print("[drawBasketballForPDF] Warning: 'basketball_icon' not found in assets. Drawing a default orange circle.")
+                print("[drawBallForPDF] Warning: '\(iconName)' not found in assets. Drawing a default orange circle.") // Updated message
             }
         }
     }
@@ -2360,6 +2548,24 @@ struct WhiteboardView: View {
         cgContext.addPath(arrowheadPath)
         cgContext.fillPath() 
     }
+
+    // Ensure currentBallKind() is defined within WhiteboardView struct scope
+    private func currentBallKind() -> String {
+        switch courtType {
+        case .full, .half:
+            return "basketball"
+        case .football:
+            return "football"
+        case .soccer:
+            return "soccerball"
+        // default: // Optional: handle other court types if they exist
+        //     return "default_ball_kind"
+        }
+    }
+
+    @State private var showPlayerLabelPrompt = false
+    @State private var pendingPlayerPosition: CGPoint? = nil
+    @State private var playerLabelInput = ""
 }
 
 struct WhiteboardView_Previews: PreviewProvider {

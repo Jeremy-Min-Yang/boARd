@@ -4,17 +4,27 @@ struct DrawingLayer: View {
     let courtType: CourtType
     @Binding var drawings: [Drawing]
     @Binding var currentDrawing: Drawing?
-    @Binding var basketballs: [BasketballItem]
+    @Binding var balls: [BallItem]
     @Binding var players: [PlayerCircle]
     @Binding var selectedTool: DrawingTool
     @Binding var selectedPenStyle: PenStyle
-    @Binding var draggedBasketballIndex: Int?
+    @Binding var draggedBallIndex: Int?
     @Binding var draggedPlayerIndex: Int?
     @Binding var isPathAssignmentMode: Bool
     @Binding var selectedDrawingId: UUID?
     
+    @State private var canvasActualSize: CGSize = .zero // To store the Canvas render size
+    
     var body: some View {
         Canvas { context, size in
+            // Update canvasActualSize whenever size changes
+            // Use DispatchQueue.main.async to avoid modifying state during view update cycle
+            if self.canvasActualSize != size { // Only update if different to reduce dispatches
+                DispatchQueue.main.async {
+                    self.canvasActualSize = size
+                }
+            }
+
             for drawing in drawings {
                 let screenPoints = drawing.points.map { virtualToScreen($0, courtType: courtType, viewSize: size) }
                 var drawingColor = drawing.color
@@ -79,15 +89,24 @@ struct DrawingLayer: View {
                 .onEnded { value in
                     if isPathAssignmentMode {
                         let location = value.location
-                        let virtualLocation = screenToVirtual(location, courtType: courtType, viewSize: CGSize(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
-                        handlePathSelection(at: virtualLocation)
+                        // Use the stored canvasActualSize for viewSize
+                        handlePathSelection(at: location, currentCanvasSize: self.canvasActualSize)
                     }
                 }
         )
         .allowsHitTesting(true)
     }
     
-    private func handlePathSelection(at location: CGPoint) {
+    private func handlePathSelection(at location: CGPoint, currentCanvasSize: CGSize) {
+        // Ensure currentCanvasSize is valid before using it
+        guard currentCanvasSize.width > 0, currentCanvasSize.height > 0 else {
+            // Optionally, handle the case where size is not yet available or invalid
+            print("Warning: handlePathSelection called with invalid currentCanvasSize: \(currentCanvasSize)")
+            selectedDrawingId = nil // Or some other default behavior
+            return
+        }
+
+        let virtualLocation = screenToVirtual(location, courtType: courtType, viewSize: currentCanvasSize)
         var tappedDrawingId: UUID? = nil
         let tapTolerance: CGFloat = 50.0
         var minDistanceFound = Double.infinity

@@ -28,231 +28,327 @@ struct HomeScreen: View {
     // Keep a reference to savedPlays in HomeScreen to pass to SavedPlaysScreen's deletePlay
     @State private var homeScreenSavedPlays: [Models.SavedPlay] = []
 
+    @State private var showSportSelectionSheet = false
+
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter
     }()
-    var body: some View {
-        ZStack(alignment: .bottom) {
+
+    // MARK: - Tabbed Content with Overlays (Extracted for Compiler Performance)
+    private struct TabbedContentWithOverlays: View {
+        @Binding var selectedTab: MainTab
+        @Binding var showSportSelectionSheet: Bool
+        
+        // For mainContentView
+        @ObservedObject var authViewModel: AuthViewModel // Assuming AuthViewModel is ObservableObject
+        @Binding var homeScreenSavedPlays: [Models.SavedPlay]
+        @Binding var isLoadingTeamPlaysForHome: Bool
+        @Binding var teamPlaysErrorForHome: String?
+        @Binding var currentTeamIDForHome: String?
+        @Binding var teamPlaysForHome: [Models.SavedPlay]
+        let dateFormatter: DateFormatter
+        var fetchTeamPlaysForHomeScreen: () -> Void
+
+        // For homeTabView, teamTabView, playsTabView directly or indirectly
+        @Binding var showARSheet: Bool
+        @Binding var arPlay: Models.SavedPlay?
+        @Binding var selectedPlay: Models.SavedPlay?
+        @Binding var editMode: Bool
+        @Binding var viewOnlyMode: Bool
+        @Binding var playToDeleteInHomeScreen: Models.SavedPlay?
+        @Binding var showDeleteConfirmationInHomeScreen: Bool
+        
+        // For overlays section
+        @Binding var showCourtOptions: Bool
+        @Binding var selectedCourtType: CourtType?
+        @Binding var navigateToWhiteboard: Bool
+
+        // Extracted Tab Views (copied here, could be passed in or part of this struct scope)
+        @ViewBuilder
+        private var homeTabView: some View {
+            VStack(alignment: .leading, spacing: 0) {
+                Spacer().frame(height: 40)
+                Text("boARd")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .padding(.top, 8)
+                HStack {
+                    Spacer()
+                    Text("Welcome back, \(authViewModel.displayName)!")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                .padding(.bottom, 24)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Recent Plays")
+                        .font(.headline)
+                    if homeScreenSavedPlays.isEmpty {
+                        Text("No recent plays yet.")
+                            .foregroundColor(.gray)
+                    } else {
+                        ForEach(homeScreenSavedPlays.prefix(3)) { play in
+                            Button(action: {
+                                selectedPlay = play
+                                editMode = false
+                                viewOnlyMode = true
+                                navigateToWhiteboard = true
+                            }) {
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(play.name)
+                                            .font(.subheadline)
+                                            .foregroundColor(.primary)
+                                        Text("Last modified: \(dateFormatter.string(from: play.lastModified))")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .foregroundColor(.gray)
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(10)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 16)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("My Team Plays")
+                        .font(.headline)
+                    if isLoadingTeamPlaysForHome {
+                        ProgressView("Loading team plays...")
+                            .padding(.vertical)
+                    } else if let error = teamPlaysErrorForHome {
+                        Text("Error loading team plays: \(error)")
+                            .foregroundColor(.red)
+                    } else if currentTeamIDForHome == nil {
+                        Text("You are not part of a team.")
+                            .foregroundColor(.gray)
+                    } else if teamPlaysForHome.isEmpty {
+                        Text("No plays found for your team yet.")
+                            .foregroundColor(.gray)
+                    } else {
+                        ForEach(teamPlaysForHome.prefix(3)) { play in
+                            Button(action: {
+                                selectedPlay = play
+                                editMode = false
+                                viewOnlyMode = true
+                                navigateToWhiteboard = true
+                            }) {
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(play.name)
+                                            .font(.subheadline)
+                                            .foregroundColor(.primary)
+                                        Text("Team Play - Last modified: \(dateFormatter.string(from: play.lastModified))")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .foregroundColor(.gray)
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(10)
+                            }
+                        }
+                        if teamPlaysForHome.count > 0 {
+                            Button(action: {
+                                selectedTab = .team
+                            }) {
+                                Text("View All Team Plays")
+                                    .font(.callout)
+                                    .foregroundColor(.blue)
+                                    .padding(.top, 4)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 24)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, 20)
+            .onAppear {
+                homeScreenSavedPlays = SavedPlayService.shared.loadPlaysLocally()
+                    .sorted { $0.lastModified > $1.lastModified }
+                fetchTeamPlaysForHomeScreen()
+            }
+        }
+
+        @ViewBuilder
+        private var teamTabView: some View {
+            TeamPlaysView(
+                showARSheet: $showARSheet, 
+                arPlay: $arPlay,
+                selectedPlayForSheet: $selectedPlay, 
+                navigateToWhiteboard: $navigateToWhiteboard,
+                editModeForSheet: $editMode, 
+                viewOnlyModeForSheet: $viewOnlyMode
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+
+        @ViewBuilder
+        private var playsTabView: some View {
+            SavedPlaysScreen(
+                selectedPlay: $selectedPlay,
+                editMode: $editMode,
+                viewOnlyMode: $viewOnlyMode,
+                navigateToWhiteboard: $navigateToWhiteboard,
+                showARSheet: $showARSheet,
+                arPlay: $arPlay,
+                playToDeleteFromParent: $playToDeleteInHomeScreen,
+                showDeleteConfirmationFromParent: $showDeleteConfirmationInHomeScreen,
+                currentSavedPlays: $homeScreenSavedPlays 
+            )
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PlaySavedNotification"))) { _ in
+                homeScreenSavedPlays = SavedPlayService.shared.loadPlaysLocally().sorted { $0.lastModified > $1.lastModified }
+            }
+        }
+
+        @ViewBuilder
+        private var profileTabView: some View {
+            ProfileView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        
+        @ViewBuilder
+        private var mainContentView: some View {
             Group {
                 switch selectedTab {
                 case .home:
-                    VStack(alignment: .leading, spacing: 0) {
-                        Spacer().frame(height: 40)
-                        // App name and welcome
-                        Text("boARd")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .padding(.top, 8)
-                        HStack {
-                            Spacer()
-                            Text("Welcome back, \(authViewModel.displayName)!")
-                                .font(.title3)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-                        .padding(.bottom, 24)
-                        // Recent Plays
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Recent Plays")
-                                .font(.headline)
-                            if homeScreenSavedPlays.isEmpty {
-                                Text("No recent plays yet.")
-                                    .foregroundColor(.gray)
-                            } else {
-                                ForEach(homeScreenSavedPlays.prefix(3)) { play in
-                                    Button(action: {
-                                        selectedPlay = play
-                                        editMode = false
-                                        viewOnlyMode = true
-                                        navigateToWhiteboard = true
-                                    }) {
-                                        HStack {
-                                            VStack(alignment: .leading) {
-                                                Text(play.name)
-                                                    .font(.subheadline)
-                                                    .foregroundColor(.primary)
-                                                Text("Last modified: \(dateFormatter.string(from: play.lastModified))")
-                                                    .font(.caption2)
-                                                    .foregroundColor(.gray)
-                                            }
-                                            Spacer()
-                                            Image(systemName: "chevron.right")
-                                                .foregroundColor(.gray)
-                                        }
-                                        .padding(.vertical, 8)
-                                        .padding(.horizontal)
-                                        .background(Color(.secondarySystemBackground))
-                                        .cornerRadius(10)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.top, 16)
-
-                        // My Team Plays Section
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("My Team Plays")
-                                .font(.headline)
-                            
-                            if isLoadingTeamPlaysForHome {
-                                ProgressView("Loading team plays...")
-                                    .padding(.vertical)
-                            } else if let error = teamPlaysErrorForHome {
-                                Text("Error loading team plays: \(error)")
-                                    .foregroundColor(.red)
-                            } else if currentTeamIDForHome == nil {
-                                Text("You are not part of a team.")
-                                    .foregroundColor(.gray)
-                            } else if teamPlaysForHome.isEmpty {
-                                Text("No plays found for your team yet.")
-                                    .foregroundColor(.gray)
-                            } else {
-                                ForEach(teamPlaysForHome.prefix(3)) { play in
-                                    Button(action: {
-                                        selectedPlay = play
-                                        editMode = false
-                                        viewOnlyMode = true
-                                        navigateToWhiteboard = true
-                                    }) {
-                                        HStack {
-                                            VStack(alignment: .leading) {
-                                                Text(play.name)
-                                                    .font(.subheadline)
-                                                    .foregroundColor(.primary)
-                                                Text("Team Play - Last modified: \(dateFormatter.string(from: play.lastModified))")
-                                                    .font(.caption2)
-                                                    .foregroundColor(.gray)
-                                            }
-                                            Spacer()
-                                            Image(systemName: "chevron.right")
-                                                .foregroundColor(.gray)
-                                        }
-                                        .padding(.vertical, 8)
-                                        .padding(.horizontal)
-                                        .background(Color(.secondarySystemBackground))
-                                        .cornerRadius(10)
-                                    }
-                                }
-                                if teamPlaysForHome.count > 0 { // Show "View All" if any team plays exist
-                                    Button(action: {
-                                        selectedTab = .team
-                                    }) {
-                                        Text("View All Team Plays")
-                                            .font(.callout)
-                                            .foregroundColor(.blue)
-                                            .padding(.top, 4)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.top, 24) // Add some spacing from Recent Plays
-
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.horizontal, 20)
-                    .onAppear {
-                        // Load local "Recent Plays"
-                        homeScreenSavedPlays = SavedPlayService.shared.loadPlaysLocally()
-                            .sorted { $0.lastModified > $1.lastModified }
-                        
-                        // Load "My Team Plays" for the home screen
-                        fetchTeamPlaysForHomeScreen()
-                    }
+                    homeTabView
                 case .team:
-                    TeamPlaysView(
-                        showARSheet: $showARSheet, 
-                        arPlay: $arPlay,
-                        selectedPlayForSheet: $selectedPlay, // For viewing/AR from team context
-                        navigateToWhiteboard: $navigateToWhiteboard,
-                        editModeForSheet: $editMode, // To set view-only mode
-                        viewOnlyModeForSheet: $viewOnlyMode
-                    )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    teamTabView
                 case .add:
-                    EmptyView()
+                    EmptyView() // This case is handled by the MainTabBar's addAction directly
                 case .plays:
-                    SavedPlaysScreen(
-                        selectedPlay: $selectedPlay,
-                        editMode: $editMode,
-                        viewOnlyMode: $viewOnlyMode,
-                        navigateToWhiteboard: $navigateToWhiteboard,
-                        showARSheet: $showARSheet,
-                        arPlay: $arPlay,
-                        // Pass bindings for hoisted alert state
-                        playToDeleteFromParent: $playToDeleteInHomeScreen,
-                        showDeleteConfirmationFromParent: $showDeleteConfirmationInHomeScreen,
-                        // Pass homeScreenSavedPlays for the deletePlay function context
-                        currentSavedPlays: $homeScreenSavedPlays 
-                    )
-                    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PlaySavedNotification"))) { _ in
-                        print("[HomeScreen] Received PlaySavedNotification, reloading plays.")
-                        homeScreenSavedPlays = SavedPlayService.shared.loadPlaysLocally().sorted { $0.lastModified > $1.lastModified }
-                    }
+                    playsTabView
                 case .profile:
-                    ProfileView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    profileTabView
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            MainTabBar(selectedTab: $selectedTab) {
-                showCourtOptions = true
-            }
-            // --- Global overlays for court selection and navigation ---
-            if showCourtOptions {
-                CourtSelectionView(isPresented: $showCourtOptions, onCourtSelected: { courtType in
-                    selectedCourtType = courtType
-                    selectedPlay = nil
-                    editMode = true
-                    viewOnlyMode = false
-                    showCourtOptions = false
-                    navigateToWhiteboard = true
-                    print("navigateToWhiteboard set to true")
-                })
-            }
-            NavigationLink(
-                destination: Group {
-                    if let play = selectedPlay {
-                        WhiteboardView(courtType: play.courtTypeEnum, playToLoad: play, isEditable: editMode)
-                    } else if let courtType = selectedCourtType {
-                        WhiteboardView(courtType: courtType)
-                    } else {
-                        EmptyView()
+        }
+
+        var body: some View {
+            ZStack { // Outer ZStack for overlays
+                VStack(spacing: 0) { // VStack to manage vertical layout of content and TabBar
+                    mainContentView // This is the Group { switch ... }.frame(...) - should expand
+                    
+                    MainTabBar(selectedTab: $selectedTab) {
+                        showSportSelectionSheet = true
                     }
-                },
-                isActive: $navigateToWhiteboard,
-                label: { EmptyView() }
+                }
+                
+                // Overlays and NavigationLink remain in the ZStack to appear on top
+                if showCourtOptions {
+                    CourtSelectionView(isPresented: $showCourtOptions, onCourtSelected: { courtType in
+                        selectedCourtType = courtType
+                        selectedPlay = nil
+                        editMode = true
+                        viewOnlyMode = false
+                        showCourtOptions = false
+                        navigateToWhiteboard = true
+                    })
+                }
+                NavigationLink(
+                    destination: Group {
+                        if let play = selectedPlay {
+                            WhiteboardView(courtType: play.courtTypeEnum, playToLoad: play, isEditable: editMode)
+                        } else if let courtType = selectedCourtType {
+                            let _ = print("[HomeScreen DEBUG] Navigating to WhiteboardView with selectedCourtType: \(courtType) for a new play.")
+                            WhiteboardView(courtType: courtType)
+                        } else {
+                            EmptyView()
+                        }
+                    },
+                    isActive: $navigateToWhiteboard,
+                    label: { EmptyView() }
+                )
+                .hidden()
+            }
+        }
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            TabbedContentWithOverlays(
+                selectedTab: $selectedTab,
+                showSportSelectionSheet: $showSportSelectionSheet,
+                authViewModel: authViewModel, // Pass EnvironmentObject
+                homeScreenSavedPlays: $homeScreenSavedPlays,
+                isLoadingTeamPlaysForHome: $isLoadingTeamPlaysForHome,
+                teamPlaysErrorForHome: $teamPlaysErrorForHome,
+                currentTeamIDForHome: $currentTeamIDForHome,
+                teamPlaysForHome: $teamPlaysForHome,
+                dateFormatter: dateFormatter,
+                fetchTeamPlaysForHomeScreen: fetchTeamPlaysForHomeScreen,
+                showARSheet: $showARSheet,
+                arPlay: $arPlay,
+                selectedPlay: $selectedPlay,
+                editMode: $editMode,
+                viewOnlyMode: $viewOnlyMode,
+                playToDeleteInHomeScreen: $playToDeleteInHomeScreen,
+                showDeleteConfirmationInHomeScreen: $showDeleteConfirmationInHomeScreen,
+                showCourtOptions: $showCourtOptions,
+                selectedCourtType: $selectedCourtType,
+                navigateToWhiteboard: $navigateToWhiteboard
             )
-            .hidden()
+            .sheet(isPresented: $showSportSelectionSheet) {
+                SportSelectionView(
+                    isPresented: $showSportSelectionSheet,
+                    onSportSelected: { sportFromSelection in
+                        // If .full or .half is received, it implies basketball was chosen in SportSelectionView
+                        // and we want to show the basketball-specific CourtSelectionView.
+                        // Otherwise, it's .soccer or .football for direct navigation.
+                        if sportFromSelection == .full || sportFromSelection == .half {
+                            showCourtOptions = true // This will show the basketball full/half selection view
+                        } else {
+                            // This handles .soccer or .football directly
+                            selectedCourtType = sportFromSelection 
+                            selectedPlay = nil
+                            editMode = true
+                            viewOnlyMode = false
+                            navigateToWhiteboard = true
+                        }
+                    }
+                )
+            }
+            .alert(isPresented: $showLoginAlert) {
+                Alert(
+                    title: Text("Login Required"),
+                    message: Text("You must be logged in to upload plays to the cloud."),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+            .alert(isPresented: $showDeleteConfirmationInHomeScreen) {
+                Alert(
+                    title: Text("Delete Play"),
+                    message: Text("Are you sure you want to delete '\(playToDeleteInHomeScreen?.name ?? "")'? This cannot be undone."),
+                    primaryButton: .destructive(Text("Delete")) {
+                        if let play = playToDeleteInHomeScreen {
+                            deletePlayFromHomeScreen(play: play)
+                        }
+                        playToDeleteInHomeScreen = nil
+                    },
+                    secondaryButton: .cancel {
+                        playToDeleteInHomeScreen = nil
+                    }
+                )
+            }
         }
         .edgesIgnoringSafeArea(.bottom)
-        .alert(isPresented: $showLoginAlert) {
-            Alert(
-                title: Text("Login Required"),
-                message: Text("You must be logged in to upload plays to the cloud."),
-                dismissButton: .default(Text("OK"))
-            )
-        }
-        // Moved alert for play deletion to HomeScreen
-        .alert(isPresented: $showDeleteConfirmationInHomeScreen) {
-            Alert(
-                title: Text("Delete Play"),
-                message: Text("Are you sure you want to delete '\(playToDeleteInHomeScreen?.name ?? "")'? This cannot be undone."),
-                primaryButton: .destructive(Text("Delete")) {
-                    if let play = playToDeleteInHomeScreen {
-                        // Call a delete function that can update homeScreenSavedPlays
-                        deletePlayFromHomeScreen(play: play)
-                    }
-                    playToDeleteInHomeScreen = nil
-                },
-                secondaryButton: .cancel {
-                    playToDeleteInHomeScreen = nil
-                }
-            )
-        }
     }
 
     func fetchTeamPlaysForHomeScreen() {

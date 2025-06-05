@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		091524E92DF0903B00671E84 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 091524E82DF0903B00671E84 /* ShareSheet.swift */; };
+		091524EB2DF1488000671E84 /* SportSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 091524EA2DF1488000671E84 /* SportSelectionView.swift */; };
 		0917D4F22DD1FEF700F49352 /* BasketballsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4E72DD1FEF700F49352 /* BasketballsView.swift */; };
 		0917D4F32DD1FEF700F49352 /* DrawingLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4E92DD1FEF700F49352 /* DrawingLayer.swift */; };
 		0917D4F42DD1FEF700F49352 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0917D4EA2DD1FEF700F49352 /* Extensions.swift */; };
@@ -50,6 +51,7 @@
 
 /* Begin PBXFileReference section */
 		091524E82DF0903B00671E84 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
+		091524EA2DF1488000671E84 /* SportSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportSelectionView.swift; sourceTree = "<group>"; };
 		0917D4E72DD1FEF700F49352 /* BasketballsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasketballsView.swift; sourceTree = "<group>"; };
 		0917D4E82DD1FEF700F49352 /* CourtImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourtImageView.swift; sourceTree = "<group>"; };
 		0917D4E92DD1FEF700F49352 /* DrawingLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawingLayer.swift; sourceTree = "<group>"; };
@@ -131,6 +133,7 @@
 				09E06C072DE2F8E300D11095 /* AppDelegate.swift */,
 				09B94BC92DE598970097DDA9 /* Frameworks */,
 				092997522DEA22A80073EBF9 /* UserService.swift */,
+				091524EA2DF1488000671E84 /* SportSelectionView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -275,6 +278,7 @@
 				EC3802632DE898D300EF5A83 /* AR.swift in Sources */,
 				0917D4F42DD1FEF700F49352 /* Extensions.swift in Sources */,
 				0917D4F52DD1FEF700F49352 /* TouchTypeDetectionView.swift in Sources */,
+				091524EB2DF1488000671E84 /* SportSelectionView.swift in Sources */,
 				0917D4F62DD1FEF700F49352 /* ToolbarView.swift in Sources */,
 				0917D4F72DD1FEF700F49352 /* Models.swift in Sources */,
 				09ACAB792DD8BC2C006310D7 /* ProfileView.swift in Sources */,

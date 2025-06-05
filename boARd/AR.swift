@@ -210,7 +210,7 @@ struct ContentView: View {
             }
         }
         // Balls
-        for ball in play.basketballs {
+        for ball in play.balls {
             guard let pathId = ball.assignedPathId,
                   let drawing = play.drawings.first(where: { $0.id == pathId }),
                   !drawing.points.isEmpty else {
@@ -1000,7 +1000,7 @@ class CustomARView: ARView {
             playerEntity.generateCollisionShapes(recursive: false)
         }
         // Balls
-        for ball in play.basketballs {
+        for ball in play.balls {
             let arPosition2D = map2DToAR(ball.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
             let ballARPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
             let ballEntity: ModelEntity
@@ -1094,7 +1094,7 @@ class CustomARView: ARView {
         }
         // Define missingPlayers and missingBalls for debug print
         let missingPlayers = play.players.filter { self.entityMap[$0.id] == nil }
-        let missingBalls = play.basketballs.filter { self.entityMap[$0.id] == nil }
+        let missingBalls = play.balls.filter { self.entityMap[$0.id] == nil }
         print("DEBUG: WARNING: Missing entities for animation. Missing players: \(missingPlayers), Missing balls: \(missingBalls)")
         // Build animation data for players
         for player in play.players {
@@ -1118,7 +1118,7 @@ class CustomARView: ARView {
             }
         }
         // Build animation data for balls
-        for ball in play.basketballs {
+        for ball in play.balls {
             guard let pathId = ball.assignedPathId,
                   let drawing = play.drawings.first(where: { $0.id == pathId }),
                   !drawing.points.isEmpty else {
@@ -1277,7 +1277,7 @@ class CustomARView: ARView {
             }
         }
         // Build animation data for balls
-        for ball in play.basketballs {
+        for ball in play.balls {
             guard let pathId = ball.assignedPathId,
                   let drawing = play.drawings.first(where: { $0.id == pathId }),
                   !drawing.points.isEmpty else {
@@ -1449,7 +1449,7 @@ struct ContentView_Previews: PreviewProvider {
             courtType: "full",
             drawings: [],
             players: [],
-            basketballs: [],
+            balls: [],
             opponents: []
         ))
     }
