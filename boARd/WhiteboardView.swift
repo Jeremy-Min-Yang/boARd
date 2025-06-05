@@ -48,9 +48,7 @@ struct WhiteboardView: View {
     @State private var currentTouchType: TouchInputType = .unknown
     @State private var showPencilIndicator: Bool = false
     @State private var lastTouchLocation: CGPoint = .zero
-    @State private var showPlayerLimitAlert = false
-    @State private var showBasketballLimitAlert = false
-    @State private var showClearConfirmation = false
+    @State private var showDraftRecoveryAlert = false
     
     // Debug mode
     @State private var debugMode: Bool = true
@@ -103,11 +101,9 @@ struct WhiteboardView: View {
     @State private var courtDrawingAreaSize: CGSize = .zero // For PDF export geometry
     
     @Environment(\.presentationMode) var presentationMode
-    @State private var showExitAlert = false
     @State private var showSaveErrorAlert = false
     @State private var saveErrorMessage = ""
     @State private var autoSaveTimer: Timer? = nil
-    @State private var showDraftRecoveryAlert = false
     
     // --- Auto-Save/Drafts ---
     private var draftKey: String {
@@ -253,9 +249,10 @@ struct WhiteboardView: View {
                                 case .opponent:
                                     if !opponents.isEmpty { opponents.removeLast() }
                                 }
+                                isDirty = true // <-- Add this here
                             }
                         },
-                        onClear: { showClearConfirmation = true },
+                        onClear: { activeAlert = .clearConfirmation },
                         onPlayAnimation: { startAnimation() },
                         onPauseAnimation: { pauseAnimation() },
                         onAssignPath: { togglePathAssignmentMode() },
@@ -320,7 +317,7 @@ struct WhiteboardView: View {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: {
                     if isDirty {
-                        showExitAlert = true
+                        activeAlert = .exit
                     } else {
                         presentationMode.wrappedValue.dismiss()
                     }
@@ -347,27 +344,42 @@ struct WhiteboardView: View {
                 }
             }
         }
-        .alert("Player Limit Reached", isPresented: $showPlayerLimitAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("You can only have up to 5 players on the court at once.")
-        }
-        .alert("Basketball Limit Reached", isPresented: $showBasketballLimitAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("You can only have one ball on the court at a time.") // Updated message
-        }
-        .alert("Clear Whiteboard?", isPresented: $showClearConfirmation) {
-            Button("Clear", role: .destructive) {
-                drawings.removeAll()
-                players.removeAll()
-                balls.removeAll()
-                opponents.removeAll() // <-- Now clears opponents too
-                actions.removeAll()
+        .alert(item: $activeAlert) { alertType in
+            switch alertType {
+            case .playerLimit:
+                return Alert(title: Text("Player Limit Reached"), message: Text("You can only have up to 5 players on the court at once."), dismissButton: .default(Text("OK")))
+            case .basketballLimit:
+                return Alert(title: Text("Basketball Limit Reached"), message: Text("You can only have one ball on the court at a time."), dismissButton: .default(Text("OK")))
+            case .clearConfirmation:
+                return Alert(title: Text("Clear Whiteboard?"), message: Text("Are you sure you want to clear the whiteboard? This action cannot be undone."), primaryButton: .destructive(Text("Clear"), action: {
+                    drawings.removeAll()
+                    players.removeAll()
+                    balls.removeAll()
+                    opponents.removeAll()
+                    actions.removeAll()
+                    isDirty = true
+                }), secondaryButton: .cancel())
+            case .exit:
+                return Alert(title: Text("Unsaved Changes"), message: Text("You have unsaved changes. What would you like to do?"), primaryButton: .default(Text("Save"), action: {
+                    saveCurrentPlayImmediate(onSuccess: {
+                        presentationMode.wrappedValue.dismiss()
+                    })
+                }), secondaryButton: .destructive(Text("Discard"), action: {
+                    presentationMode.wrappedValue.dismiss()
+                }))
+            case .saveError:
+                return Alert(title: Text("Save Error"), message: Text(saveErrorMessage), dismissButton: .default(Text("OK")))
+            case .draftRecovery:
+                return Alert(title: Text("Draft Found"), message: Text("A draft was found. Would you like to recover it?"), primaryButton: .default(Text("Recover"), action: {
+                    if let draft = loadDraft() {
+                        restoreFromDraft(draft)
+                    }
+                    activeAlert = nil
+                }), secondaryButton: .destructive(Text("Discard"), action: {
+                    deleteDraft()
+                    activeAlert = nil
+                }))
             }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Are you sure you want to clear the whiteboard? This action cannot be undone.")
         }
         .sheet(isPresented: $showingSaveAlert) {
             SavePlaySheet(playNameInput: $playNameInput) {
@@ -409,7 +421,7 @@ struct WhiteboardView: View {
             }
             // Check for draft on appear
             if let _ = loadDraft() {
-                showDraftRecoveryAlert = true
+                activeAlert = .draftRecovery
             }
         }
         .onChange(of: playbackState) { newState in
@@ -423,39 +435,6 @@ struct WhiteboardView: View {
             stopIndicatorAnimation()
             autoSaveTimer?.invalidate()
             autoSaveTimer = nil
-        }
-        .alert(isPresented: $showExitAlert) {
-            Alert(
-                title: Text("Unsaved Changes"),
-                message: Text("You have unsaved changes. What would you like to do?"),
-                primaryButton: .default(Text("Save"), action: {
-                    saveCurrentPlayImmediate(onSuccess: {
-                        presentationMode.wrappedValue.dismiss()
-                    })
-                }),
-                secondaryButton: .destructive(Text("Discard"), action: {
-                    presentationMode.wrappedValue.dismiss()
-                })
-            )
-        }
-        .alert(isPresented: $showSaveErrorAlert) {
-            Alert(title: Text("Save Error"), message: Text(saveErrorMessage), dismissButton: .default(Text("OK")))
-        }
-        .alert(isPresented: $showDraftRecoveryAlert) {
-            Alert(
-                title: Text("Draft Found"),
-                message: Text("A draft was found. Would you like to recover it?"),
-                primaryButton: .default(Text("Recover"), action: {
-                    if let draft = loadDraft() {
-                        restoreFromDraft(draft)
-                    }
-                    showDraftRecoveryAlert = false
-                }),
-                secondaryButton: .destructive(Text("Discard"), action: {
-                    deleteDraft()
-                    showDraftRecoveryAlert = false
-                })
-            )
         }
     }
     
@@ -1215,7 +1194,7 @@ struct WhiteboardView: View {
             }
         }()
         if players.count >= maxPlayers {
-            showPlayerLimitAlert = true
+            activeAlert = .playerLimit
             return
         }
         
@@ -1255,7 +1234,7 @@ struct WhiteboardView: View {
     
     private func addBallAt(position: CGPoint) {
         if balls.count >= 1 {
-            showBasketballLimitAlert = true
+            activeAlert = .basketballLimit
             return
         }
         
@@ -1626,6 +1605,7 @@ struct WhiteboardView: View {
                  // Continue moving the currently dragged player
                  players[playerIndex].position = location
                  updateNormalizedPosition(forPlayer: playerIndex, location: location)
+                 isDirty = true // <-- Add this here
                  return // Already handled drag update
              } else {
                  // Index out of range, reset it
@@ -1641,6 +1621,7 @@ struct WhiteboardView: View {
                  // Continue moving the currently dragged basketball
                  balls[basketballIndex].position = location // Renamed
                  updateNormalizedPosition(forBall: basketballIndex, location: location) // Renamed
+                 isDirty = true // <-- Add this here
                  return // Already handled drag update
              } else {
                  // Index out of range, reset it
@@ -1663,6 +1644,7 @@ struct WhiteboardView: View {
                  draggedPlayerIndex = index
                  players[index].position = location // Update position immediately
                  updateNormalizedPosition(forPlayer: index, location: location)
+                 isDirty = true // <-- Add this here
                  return // Found a player, start dragging
              }
          }
@@ -1675,6 +1657,7 @@ struct WhiteboardView: View {
                  draggedBallIndex = index // Renamed
                  balls[index].position = location // Renamed
                  updateNormalizedPosition(forBall: index, location: location) // Renamed
+                 isDirty = true // <-- Add this here
                  return // Found a basketball, start dragging
              }
          }
@@ -1831,7 +1814,7 @@ struct WhiteboardView: View {
         guard let authenticatedUserID = Auth.auth().currentUser?.uid else {
             print("Error: User not logged in. Cannot save play.")
             self.saveErrorMessage = "You must be logged in to save plays."
-            self.showSaveErrorAlert = true
+            self.activeAlert = .saveError
             return
         }
 
@@ -1869,7 +1852,7 @@ struct WhiteboardView: View {
             if let error = error {
                 print("Error saving play: \(error.localizedDescription)")
                 self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
-                self.showSaveErrorAlert = true
+                self.activeAlert = .saveError
             } else {
                 print("Play '\(name)' saved successfully with ID: \(newPlay.id), TeamID: \(teamID ?? "None")")
                 self.playNameInput = "" // Clear input field
@@ -2135,7 +2118,7 @@ struct WhiteboardView: View {
         guard let authenticatedUserID = Auth.auth().currentUser?.uid else {
             print("Error: User not logged in. Cannot save new play.")
             self.saveErrorMessage = "You must be logged in to save plays."
-            self.showSaveErrorAlert = true
+            self.activeAlert = .saveError
             return
         }
         let currentTeamID = UserService.shared.getCurrentUserTeamID() // May be nil
@@ -2166,7 +2149,7 @@ struct WhiteboardView: View {
             if let error = error {
                 print("Error saving new play: \(error.localizedDescription)")
                 self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
-                self.showSaveErrorAlert = true
+                self.activeAlert = .saveError
             } else {
                 print("Play '\(name)' saved successfully as new play with ID: \(newPlay.id), TeamID: \(currentTeamID ?? "None")")
                 self.playNameInput = "" // Clear input
@@ -2200,7 +2183,7 @@ struct WhiteboardView: View {
         guard let authenticatedUserID = Auth.auth().currentUser?.uid else {
             print("Error: User not logged in. Cannot save play immediately.")
             self.saveErrorMessage = "You must be logged in to save plays."
-            self.showSaveErrorAlert = true
+            self.activeAlert = .saveError
             return
         }
 
@@ -2230,7 +2213,7 @@ struct WhiteboardView: View {
                 print("Error saving play immediately: \(error.localizedDescription)")
                 // Update UI to show error if necessary
                 self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
-                self.showSaveErrorAlert = true
+                self.activeAlert = .saveError
             } else {
                 print("Play '\(name)' saved immediately. ID: \(newPlay.id), TeamID: \(currentTeamID ?? "None")")
                 self.isDirty = false
@@ -2566,6 +2549,22 @@ struct WhiteboardView: View {
     @State private var showPlayerLabelPrompt = false
     @State private var pendingPlayerPosition: CGPoint? = nil
     @State private var playerLabelInput = ""
+
+    // 1. Define AlertType enum and activeAlert state
+    private enum AlertType: Identifiable {
+        case playerLimit, basketballLimit, clearConfirmation, exit, saveError, draftRecovery
+        var id: Int {
+            switch self {
+            case .playerLimit: return 1
+            case .basketballLimit: return 2
+            case .clearConfirmation: return 3
+            case .exit: return 4
+            case .saveError: return 5
+            case .draftRecovery: return 6
+            }
+        }
+    }
+    @State private var activeAlert: AlertType? = nil
 }
 
 struct WhiteboardView_Previews: PreviewProvider {
