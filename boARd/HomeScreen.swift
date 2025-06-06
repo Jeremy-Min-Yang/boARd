@@ -20,7 +20,7 @@ struct HomeScreen: View {
     @State private var teamPlaysForHome: [Models.SavedPlay] = []
     @State private var isLoadingTeamPlaysForHome: Bool = false
     @State private var teamPlaysErrorForHome: String? = nil
-    @State private var currentTeamIDForHome: String? = nil
+    @State private var currentTeamIDForHome: String? = UserService.shared.getCurrentUserTeamID()
 
     // Alert state hoisted from SavedPlaysScreen
     @State private var playToDeleteInHomeScreen: Models.SavedPlay? = nil
@@ -187,15 +187,8 @@ struct HomeScreen: View {
 
         @ViewBuilder
         private var teamTabView: some View {
-            TeamPlaysView(
-                showARSheet: $showARSheet, 
-                arPlay: $arPlay,
-                selectedPlayForSheet: $selectedPlay, 
-                navigateToWhiteboard: $navigateToWhiteboard,
-                editModeForSheet: $editMode, 
-                viewOnlyModeForSheet: $viewOnlyMode
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            TeamPlaysView(teamID: currentTeamIDForHome ?? "")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
 
         @ViewBuilder
@@ -395,148 +388,6 @@ struct HomeScreen: View {
     }
 }
 
-struct TeamPlaysView: View {
-    @Binding var showARSheet: Bool
-    @Binding var arPlay: Models.SavedPlay?
-    @Binding var selectedPlayForSheet: Models.SavedPlay? // To trigger navigation/sheet
-    @Binding var navigateToWhiteboard: Bool
-    @Binding var editModeForSheet: Bool
-    @Binding var viewOnlyModeForSheet: Bool
-
-    @State private var teamPlays: [Models.SavedPlay] = []
-    @State private var isLoading: Bool = true
-    @State private var currentTeamID: String?
-    @State private var errorMessage: String?
-
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
-    var body: some View {
-        NavigationView { // Added NavigationView for a title
-            VStack {
-                if isLoading {
-                    ProgressView("Loading Team Plays...")
-                        .padding()
-                } else if let teamID = currentTeamID {
-                    if let error = errorMessage {
-                        Text("Error: \(error)")
-                            .foregroundColor(.red)
-                            .padding()
-                    }
-                    if teamPlays.isEmpty && errorMessage == nil {
-                        VStack {
-                            Text("No Plays for Your Team Yet")
-                                .font(.headline)
-                                .padding(.bottom)
-                            Text("Once plays are added to team '\(teamID)', they will appear here.")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                        }
-                        .padding()
-                    } else if !teamPlays.isEmpty {
-                        List {
-                            ForEach(teamPlays) { play in
-                                SavedPlayRow(
-                                    play: play,
-                                    dateFormatter: dateFormatter,
-                                    onEdit: {
-                                        // For team plays, typically view-only or restricted edit
-                                        // For now, let's make it view-only
-                                        selectedPlayForSheet = play
-                                        editModeForSheet = false // Explicitly false for edit
-                                        viewOnlyModeForSheet = true // Explicitly true for view
-                                        navigateToWhiteboard = true
-                                    },
-                                    onView: {
-                                        selectedPlayForSheet = play
-                                        editModeForSheet = false
-                                        viewOnlyModeForSheet = true
-                                        navigateToWhiteboard = true
-                                    },
-                                    onAR: {
-                                        arPlay = play
-                                        showARSheet = true
-                                    },
-                                    onDelete: {
-                                        deleteTeamPlay(play)
-                                    },
-                                    onUpload: {},
-                                    isUploading: false,
-                                    uploadSuccess: false
-                                )
-                            }
-                        }
-                        .listStyle(PlainListStyle()) // Use PlainListStyle for better appearance
-                    }
-                } else {
-                    VStack {
-                        Text("Not Part of a Team")
-                            .font(.headline)
-                            .padding(.bottom)
-                        Text("Please join or create a team from your Profile to see shared plays.")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        // Optional: Button to navigate to Profile
-                        // NavigationLink("Go to Profile", destination: ProfileView()) // Requires ProfileView to be embeddable or use a tab switch
-                    }
-                    .padding()
-                }
-                Spacer() // Pushes content to the top if list is short or view is empty
-            }
-            .navigationTitle("Team Plays") // Set a navigation title
-            .onAppear {
-                fetchTeamData()
-            }
-        }
-         .navigationViewStyle(StackNavigationViewStyle()) // Use stack style for larger screens if needed
-    }
-
-    func fetchTeamData() {
-        isLoading = true
-        errorMessage = nil
-        self.currentTeamID = UserService.shared.getCurrentUserTeamID() // Get current user's team ID
-
-        if let teamID = self.currentTeamID {
-            SavedPlayService.shared.fetchPlaysForTeam(teamID: teamID) { result in
-                DispatchQueue.main.async {
-                    isLoading = false
-                    switch result {
-                    case .success(let plays):
-                        self.teamPlays = plays.sorted { $0.lastModified > $1.lastModified }
-                        if self.teamPlays.isEmpty {
-                            print("No plays found for team ID: \(teamID)")
-                        }
-                    case .failure(let error):
-                        print("Error fetching team plays: \(error.localizedDescription)")
-                        self.errorMessage = error.localizedDescription
-                    }
-                }
-            }
-        } else {
-            isLoading = false
-            print("User is not part of any team.")
-        }
-    }
-    
-    // Placeholder for deleting a team play (would need permissions)
-    private func deleteTeamPlay(_ play: Models.SavedPlay) {
-        // For now, allow any user to delete their own team play
-        teamPlays.removeAll { $0.id == play.id }
-        SavedPlayService.shared.deletePlayEverywhere(playID: play.id.uuidString) { _ in
-            // Optionally refresh from Firestore if needed
-            teamPlays = teamPlays.filter { $0.id != play.id }
-        }
-    }
-}
-
 struct SavedPlaysScreen: View {
     @Binding var selectedPlay: Models.SavedPlay?
     @Binding var editMode: Bool
@@ -549,6 +400,10 @@ struct SavedPlaysScreen: View {
     @Binding var playToDeleteFromParent: Models.SavedPlay?
     @Binding var showDeleteConfirmationFromParent: Bool
     @Binding var currentSavedPlays: [Models.SavedPlay] // This is the source of truth for plays
+    @State private var showUploadToTeamSheet = false
+    @State private var playToUploadToTeam: Models.SavedPlay? = nil
+    @State private var userTeamID: String? = UserService.shared.getCurrentUserTeamID()
+    @State private var showNoTeamAlert = false
 
     // Local state for UI elements within SavedPlaysScreen
     @State private var syncStatus: String = ""
@@ -711,6 +566,14 @@ struct SavedPlaysScreen: View {
                                                         }
                                                     }
                                                 },
+                                                onUploadToTeam: {
+                                                    if let _ = userTeamID {
+                                                        playToUploadToTeam = play
+                                                        showUploadToTeamSheet = true
+                                                    } else {
+                                                        showNoTeamAlert = true
+                                                    }
+                                                },
                                                 isUploading: uploadingPlayID == play.id,
                                                 uploadSuccess: uploadSuccessPlayID == play.id
                                             )
@@ -743,6 +606,18 @@ struct SavedPlaysScreen: View {
                  dismissButton: .default(Text("OK"))
              )
          }
+        .alert(isPresented: $showNoTeamAlert) {
+            Alert(
+                title: Text("Not in a Team"),
+                message: Text("Join or create a team in your profile before uploading plays to a team."),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+        .sheet(isPresented: $showUploadToTeamSheet) {
+            if let play = playToUploadToTeam, let teamID = userTeamID {
+                UploadPlayView(teamID: teamID, preselectedPlay: play)
+            }
+        }
     }
 }
 
@@ -754,6 +629,7 @@ struct SavedPlayRow: View {
     let onAR: () -> Void
     let onDelete: () -> Void
     let onUpload: () -> Void
+    let onUploadToTeam: () -> Void
     let isUploading: Bool
     let uploadSuccess: Bool
     var body: some View {
@@ -808,6 +684,11 @@ struct SavedPlayRow: View {
                     }
                     .disabled(isUploading)
                     .accessibilityLabel("Upload to Cloud")
+                    Button(action: onUploadToTeam) {
+                        Image(systemName: "person.3.fill")
+                            .foregroundColor(.orange)
+                    }
+                    .accessibilityLabel("Upload to Team")
                 }
                 .padding(.trailing, 8)
             }

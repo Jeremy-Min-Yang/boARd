@@ -347,4 +347,21 @@ struct Models {
             return PointData(x: cgPoint.x, y: cgPoint.y)
         }
     }
+}
+
+// MARK: - Team and TeamPlay Models for Firestore
+
+struct Team: Identifiable, Codable {
+    var id: String?
+    var teamName: String
+    var adminUserID: String
+    var members: [String]
+}
+
+struct TeamPlay: Identifiable, Codable {
+    var id: String?
+    var name: String
+    var createdBy: String
+    var createdAt: Date
+    var playData: Models.SavedPlay // Reference to your existing SavedPlay model
 } 
