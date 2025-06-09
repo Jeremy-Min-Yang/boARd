@@ -560,14 +560,6 @@ struct SavedPlaysScreen: View {
                                                         }
                                                     }
                                                 },
-                                                onUploadToTeam: {
-                                                    if let _ = userTeamID {
-                                                        playToUploadToTeam = play
-                                                        showUploadToTeamSheet = true
-                                                    } else {
-                                                        showNoTeamAlert = true
-                                                    }
-                                                },
                                                 isUploading: uploadingPlayID == play.id,
                                                 uploadSuccess: uploadSuccessPlayID == play.id
                                             )
@@ -623,7 +615,6 @@ struct SavedPlayRow: View {
     let onAR: () -> Void
     let onDelete: () -> Void
     let onUpload: () -> Void
-    let onUploadToTeam: () -> Void
     let isUploading: Bool
     let uploadSuccess: Bool
     var body: some View {
@@ -678,11 +669,6 @@ struct SavedPlayRow: View {
                     }
                     .disabled(isUploading)
                     .accessibilityLabel("Upload to Cloud")
-                    Button(action: onUploadToTeam) {
-                        Image(systemName: "person.3.fill")
-                            .foregroundColor(.orange)
-                    }
-                    .accessibilityLabel("Upload to Team")
                 }
                 .padding(.trailing, 8)
             }
