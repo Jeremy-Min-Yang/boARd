@@ -17,7 +17,7 @@ struct HomeScreen: View {
     @State private var showLoginAlert: Bool = false
 
     // New state for Home Screen Team Plays
-    @State private var teamPlaysForHome: [Models.SavedPlay] = []
+    @State private var teamPlaysForHome: [TeamPlay] = []
     @State private var isLoadingTeamPlaysForHome: Bool = false
     @State private var teamPlaysErrorForHome: String? = nil
     @State private var currentTeamIDForHome: String? = UserService.shared.getCurrentUserTeamID()
@@ -48,7 +48,7 @@ struct HomeScreen: View {
         @Binding var isLoadingTeamPlaysForHome: Bool
         @Binding var teamPlaysErrorForHome: String?
         @Binding var currentTeamIDForHome: String?
-        @Binding var teamPlaysForHome: [Models.SavedPlay]
+        @Binding var teamPlaysForHome: [TeamPlay]
         let dateFormatter: DateFormatter
         var fetchTeamPlaysForHomeScreen: () -> Void
 
@@ -137,7 +137,7 @@ struct HomeScreen: View {
                     } else {
                         ForEach(teamPlaysForHome.prefix(3)) { play in
                             Button(action: {
-                                selectedPlay = play
+                                selectedPlay = play.playData
                                 editMode = false
                                 viewOnlyMode = true
                                 navigateToWhiteboard = true
@@ -147,7 +147,7 @@ struct HomeScreen: View {
                                         Text(play.name)
                                             .font(.subheadline)
                                             .foregroundColor(.primary)
-                                        Text("Team Play - Last modified: \(dateFormatter.string(from: play.lastModified))")
+                                        Text("By: \(play.createdBy)")
                                             .font(.caption2)
                                             .foregroundColor(.gray)
                                     }
@@ -358,19 +358,13 @@ struct HomeScreen: View {
         isLoadingTeamPlaysForHome = true
         teamPlaysErrorForHome = nil
         
-        SavedPlayService.shared.fetchPlaysForTeam(teamID: teamID) { result in
+        TeamService.shared.fetchTeamPlays(teamID: teamID) { plays in
             DispatchQueue.main.async {
                 isLoadingTeamPlaysForHome = false
-                switch result {
-                case .success(let plays):
-                    self.teamPlaysForHome = plays.sorted { $0.lastModified > $1.lastModified }
-                    print("DEBUG HomeScreen: Successfully fetched \(self.teamPlaysForHome.count) team plays for team ID \(teamID).")
-                    if self.teamPlaysForHome.isEmpty {
-                        print("DEBUG HomeScreen: No plays found for team ID \(teamID) on home screen.")
-                    }
-                case .failure(let error):
-                    self.teamPlaysErrorForHome = error.localizedDescription
-                    print("DEBUG HomeScreen: Error fetching team plays for home: \(error.localizedDescription)")
+                self.teamPlaysForHome = plays
+                print("DEBUG HomeScreen: Successfully fetched \(self.teamPlaysForHome.count) team plays for team ID \(teamID).")
+                if self.teamPlaysForHome.isEmpty {
+                    print("DEBUG HomeScreen: No plays found for team ID \(teamID) on home screen.")
                 }
             }
         }
