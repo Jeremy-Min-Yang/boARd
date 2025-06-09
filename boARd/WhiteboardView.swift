@@ -158,7 +158,7 @@ struct WhiteboardView: View {
                     .font(.caption)
                 }
                 .padding(.vertical, 12)
-                .background(Color(.secondarySystemBackground))
+                .background(Color(.systemBackground))
                 courtContentView(geometry: geometry)
                     .padding(.top, 8)
                 Spacer().frame(height: 32)
