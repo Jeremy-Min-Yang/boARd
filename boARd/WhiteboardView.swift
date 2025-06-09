@@ -311,6 +311,7 @@ struct WhiteboardView: View {
                 editableModeView(geometry: geometry)
             }
         }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .navigationTitle(currentPlayTitle)
         .navigationBarBackButtonHidden(true)
         .toolbar {
