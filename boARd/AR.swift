@@ -232,8 +232,8 @@ struct ContentView: View {
         // Prepare animation data for all players and balls with assigned paths
         var newAnimationData: [UUID: ARAnimationData] = [:]
         let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
-        let arCourtWidth: Float = 0.15
-        let arCourtHeight: Float = 0.15 * Float(courtSize.height / courtSize.width)
+        let arCourtWidth: Float = 0.2
+        let arCourtHeight: Float = arCourtWidth * Float(courtSize.height / courtSize.width)
         // Players
         for player in play.players {
             guard let pathId = player.assignedPathId,
@@ -471,8 +471,8 @@ struct ARViewContainer: UIViewRepresentable {
                             }
                             // Call placePlayersAndBalls once to add all assets
                             let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
-                            let arCourtWidth: Float = 0.15
-                            let arCourtHeight: Float = 0.15 * Float(courtSize.height / courtSize.width)
+                            let arCourtWidth: Float = 0.2
+                            let arCourtHeight: Float = arCourtWidth * Float(courtSize.height / courtSize.width)
                             customARView.placePlayersAndBalls(for: play, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
                             customARView.printEntityHierarchy()
                             DispatchQueue.main.async {
@@ -1325,8 +1325,8 @@ class CustomARView: ARView {
         }
 
         let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
-        let arCourtWidth: Float = 0.15
-        let arCourtHeight: Float = 0.15 * Float(courtSize.height / courtSize.width)
+        let arCourtWidth: Float = 0.2
+        let arCourtHeight: Float = arCourtWidth * Float(courtSize.height / courtSize.width)
         // Build animation data for players
         for player in play.players {
             guard let pathId = player.assignedPathId,
@@ -1563,8 +1563,8 @@ func map2DToAR(_ point: CGPoint, courtSize: CGSize, arCourtWidth: Float, arCourt
         return SIMD3<Float>(x, 0.05, z)
     } else {
         // Default (basketball)
-        let x = (xNorm - 0.5) * arCourtWidth - 0.19
-        let z = (zNorm - 0.5) * arCourtHeight + 0.02
+        let x = (xNorm - 0.5) * arCourtWidth - 0.25
+        let z = (zNorm - 0.5) * arCourtHeight - 0.08
         return SIMD3<Float>(x, 0.05, z)
     }
 }
