@@ -9,14 +9,14 @@ import FirebaseAuth
 struct WhiteboardView: View {
     @EnvironmentObject var authViewModel: AuthViewModel // Added AuthViewModel
     let courtType: CourtType
-    var playToLoad: Models.SavedPlay? = nil
+    @State private var playToLoad: Models.SavedPlay?
     var isEditable: Bool = true // Default to true (for new plays)
     
     // Add this init method
     init(courtType: CourtType, playToLoad: Models.SavedPlay? = nil, isEditable: Bool = true) {
         print("[WhiteboardView DEBUG] Initializing with courtType: \(courtType)") // DEBUG PRINT
         self.courtType = courtType
-        self.playToLoad = playToLoad
+        self._playToLoad = State(initialValue: playToLoad)
         self.isEditable = isEditable
 
         // Configure Navigation Bar Appearance to remove shadow/hairline
@@ -1856,6 +1856,7 @@ struct WhiteboardView: View {
                 self.activeAlert = .saveError
             } else {
                 print("Play '\(name)' saved successfully with ID: \(newPlay.id), TeamID: \(teamID ?? "None")")
+                self.playToLoad = newPlay
                 self.playNameInput = "" // Clear input field
                 self.showingSaveAlert = false // Dismiss sheet
                 self.isDirty = false // Mark as not dirty
@@ -2153,6 +2154,7 @@ struct WhiteboardView: View {
                 self.activeAlert = .saveError
             } else {
                 print("Play '\(name)' saved successfully as new play with ID: \(newPlay.id), TeamID: \(currentTeamID ?? "None")")
+                self.playToLoad = newPlay
                 self.playNameInput = "" // Clear input
                 self.showingSaveAsAlert = false // Dismiss sheet
                 self.isDirty = false // Mark as not dirty
