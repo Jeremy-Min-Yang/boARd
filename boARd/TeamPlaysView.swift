@@ -15,50 +15,70 @@ struct TeamPlaysView: View {
     @State private var joinTeamSuccess: Bool = false
     @State private var createTeamSuccess: Bool = false
     @State private var teamName: String? = nil
+    @State private var selectedPlay: Models.SavedPlay?
+    @State private var navigateToWhiteboard = false
 
     var body: some View {
-        VStack {
-            if teamID.isEmpty {
-                HStack(spacing: 20) {
-                    Button(action: { showJoinTeamAlert = true }) {
-                        Label("Join Team", systemImage: "person.badge.plus")
+        ZStack {
+            VStack {
+                if teamID.isEmpty {
+                    HStack(spacing: 20) {
+                        Button(action: { showJoinTeamAlert = true }) {
+                            Label("Join Team", systemImage: "person.badge.plus")
+                        }
+                        Button(action: { showCreateTeamAlert = true }) {
+                            Label("Create Team", systemImage: "plus.circle")
+                        }
                     }
-                    Button(action: { showCreateTeamAlert = true }) {
-                        Label("Create Team", systemImage: "plus.circle")
+                    .padding(.top)
+                } else {
+                    if let name = teamName {
+                        Text(name)
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .padding(.top)
+                    } else {
+                        ProgressView("Loading team info...")
+                            .padding(.top)
                     }
                 }
-                .padding(.top)
-            } else {
-                if let name = teamName {
-                    Text(name)
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .padding(.top)
+                if isLoading {
+                    ProgressView("Loading plays...")
+                } else if let errorMessage = errorMessage {
+                    Text(errorMessage).foregroundColor(.red)
+                } else if plays.isEmpty {
+                    Text("No plays uploaded yet.")
+                        .foregroundColor(.gray)
                 } else {
-                    ProgressView("Loading team info...")
-                        .padding(.top)
+                    List(plays) { play in
+                        Button(action: {
+                            self.selectedPlay = play.playData
+                            self.navigateToWhiteboard = true
+                        }) {
+                            VStack(alignment: .leading) {
+                                Text(play.name)
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Text("By: \(play.createdBy)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Text(play.createdAt, style: .date)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
                 }
             }
-            if isLoading {
-                ProgressView("Loading plays...")
-            } else if let errorMessage = errorMessage {
-                Text(errorMessage).foregroundColor(.red)
-            } else if plays.isEmpty {
-                Text("No plays uploaded yet.")
-                    .foregroundColor(.gray)
-            } else {
-                List(plays) { play in
-                    VStack(alignment: .leading) {
-                        Text(play.name)
-                            .font(.headline)
-                        Text("By: \(play.createdBy)")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Text(play.createdAt, style: .date)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
+
+            // Hidden NavigationLink for programmatically navigating to WhiteboardView
+            if let play = selectedPlay {
+                NavigationLink(
+                    destination: WhiteboardView(courtType: play.courtTypeEnum, playToLoad: play, isEditable: false),
+                    isActive: $navigateToWhiteboard,
+                    label: { EmptyView() }
+                )
+                .hidden()
             }
         }
         .navigationTitle("Team Plays")
