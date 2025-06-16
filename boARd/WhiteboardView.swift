@@ -94,7 +94,6 @@ struct WhiteboardView: View {
     
     // Add state for Save As dialog
     @State private var showingSaveAsAlert = false
-    
     // State variables for PDF export and sharing
     @State private var showingShareSheet = false
     @State private var shareablePDFURL: URL?

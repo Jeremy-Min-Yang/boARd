@@ -231,7 +231,21 @@ struct ContentView: View {
         guard !isAnimating else { return }
         // Prepare animation data for all players and balls with assigned paths
         var newAnimationData: [UUID: ARAnimationData] = [:]
-        let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
+        
+        let courtSize: CGSize
+        switch play.courtType {
+        case "Full Court":
+            courtSize = CGSize(width: 300, height: 600)
+        case "Half Court":
+            courtSize = CGSize(width: 300, height: 300)
+        case "Soccer Pitch":
+            courtSize = CGSize(width: 350, height: 500)
+        case "Football Field":
+            courtSize = CGSize(width: 300, height: 600)
+        default:
+            courtSize = CGSize(width: 300, height: 300)
+        }
+
         let arCourtWidth: Float = 0.2
         let arCourtHeight: Float = arCourtWidth * Float(courtSize.height / courtSize.width)
         // Players
@@ -470,7 +484,19 @@ struct ARViewContainer: UIViewRepresentable {
                                 }
                             }
                             // Call placePlayersAndBalls once to add all assets
-                            let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
+                            let courtSize: CGSize
+                            switch play.courtType {
+                            case "Full Court":
+                                courtSize = CGSize(width: 300, height: 600)
+                            case "Half Court":
+                                courtSize = CGSize(width: 300, height: 300)
+                            case "Soccer Pitch":
+                                courtSize = CGSize(width: 350, height: 500)
+                            case "Football Field":
+                                courtSize = CGSize(width: 300, height: 600)
+                            default:
+                                courtSize = CGSize(width: 300, height: 300)
+                            }
                             let arCourtWidth: Float = 0.2
                             let arCourtHeight: Float = arCourtWidth * Float(courtSize.height / courtSize.width)
                             customARView.placePlayersAndBalls(for: play, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
@@ -1323,7 +1349,19 @@ class CustomARView: ARView {
             print("DEBUG: mainAnchor child: Name \(child.name), ID \(child.id)")
         }
 
-        let courtSize = play.courtType == "full" ? CGSize(width: 300, height: 600) : CGSize(width: 300, height: 300)
+        let courtSize: CGSize
+        switch play.courtType {
+        case "Full Court":
+            courtSize = CGSize(width: 300, height: 600)
+        case "Half Court":
+            courtSize = CGSize(width: 300, height: 300)
+        case "Soccer Pitch":
+            courtSize = CGSize(width: 350, height: 500)
+        case "Football Field":
+            courtSize = CGSize(width: 300, height: 600)
+        default:
+            courtSize = CGSize(width: 300, height: 300)
+        }
         let arCourtWidth: Float = 0.2
         let arCourtHeight: Float = arCourtWidth * Float(courtSize.height / courtSize.width)
         // Build animation data for players
@@ -1555,16 +1593,23 @@ extension SIMD4 {
 func map2DToAR(_ point: CGPoint, courtSize: CGSize, arCourtWidth: Float, arCourtHeight: Float, courtType: String = "") -> SIMD3<Float> {
     let xNorm = Float(point.x / courtSize.width)
     let zNorm = Float(point.y / courtSize.height)
-    if courtType == "Soccer Pitch" || courtType == "Football Field" {
-        // Swap and flip axes for correct orientation
-        let x = (zNorm - 0.5) * arCourtWidth - 0.19
-        let z = (0.5 - xNorm) * arCourtHeight + 0.02
-        return SIMD3<Float>(x, 0.05, z)
+    if courtType == "Soccer Pitch" {
+        // Corrected mapping for Soccer
+        let x = (xNorm - 0.5) * arCourtWidth
+        let z = (0.5 - zNorm) * arCourtHeight // Flipped to match field orientation
+        // Offsets for the soccer model
+        return SIMD3<Float>(x - 0.18, 0.05, z - 0.07)
+    } else if courtType == "Football Field" {
+        // Rotated mapping for Football: 2D Y -> 3D X, 2D X -> 3D Z
+        let x = (0.5 - zNorm) * arCourtHeight // Corrected up/down path direction
+        let z = (xNorm - 0.5) * arCourtWidth  // Restored correct left/right path direction
+        // Offsets for the football model (you can tweak these)
+        return SIMD3<Float>(x - 0.18, 0.05, z - 0.42)
     } else {
         // Default (basketball)
-        let x = (xNorm - 0.5) * arCourtWidth - 0.25
-        let z = (zNorm - 0.5) * arCourtHeight - 0.08
-        return SIMD3<Float>(x, 0.05, z)
+        let x = (xNorm - 0.5) * arCourtWidth
+        let z = (zNorm - 0.5) * arCourtHeight
+        return SIMD3<Float>(x - 0.275, 0.05, z)
     }
 }
 
