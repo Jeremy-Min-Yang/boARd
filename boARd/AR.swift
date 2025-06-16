@@ -1033,125 +1033,124 @@ class CustomARView: ARView {
         for player in play.players {
             let arPosition2D = map2DToAR(player.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType)
             let arPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
-            let playerEntity: ModelEntity
+            
+            let playerContainer = ModelEntity() // This is the entity we'll scale and position
+
             if let loaded = try? ModelEntity.loadModel(named: "cylinder") {
                 print("DEBUG: Loaded cylinder model for player \(player.number)")
-                playerEntity = loaded
-                playerEntity.scale = SIMD3<Float>(repeating: 0.0002)
-                
+                let playerModel = loaded
+                playerModel.scale = SIMD3<Float>(repeating: 0.0002) // Scale the model instead
                 let playerMaterial = SimpleMaterial(color: .green, isMetallic: false)
-                playerEntity.model?.materials = [playerMaterial]
+                playerModel.model?.materials = [playerMaterial]
+                playerContainer.addChild(playerModel)
                 
-                // Create a MUCH bigger collision shape for easier selection
+                // The collision shape should be on the container for hit testing
                 let collisionBox = CollisionComponent(
                     shapes: [.generateBox(size: [0.3, 0.3, 0.3])],
                     mode: .trigger,
                     filter: .sensor
                 )
-                playerEntity.collision = collisionBox
+                playerContainer.collision = collisionBox
             } else {
                 print("DEBUG: Failed to load cylinder model for player \(player.number), using fallback sphere.")
-                playerEntity = ModelEntity(mesh: .generateSphere(radius: 0.008), materials: [SimpleMaterial(color: .green, isMetallic: false)])
+                let playerModel = ModelEntity(mesh: .generateSphere(radius: 0.008), materials: [SimpleMaterial(color: .green, isMetallic: false)])
+                playerContainer.addChild(playerModel)
                 
-                // Create a MUCH bigger collision shape for easier selection
                 let collisionSphere = CollisionComponent(
                     shapes: [.generateSphere(radius: 0.3)],
                     mode: .trigger,
                     filter: .sensor
                 )
-                playerEntity.collision = collisionSphere
+                playerContainer.collision = collisionSphere
             }
             
-            playerEntity.position = arPosition
-            playerEntity.name = "player_\(player.id)"
-            self.mainAnchor.addChild(playerEntity)
-            self.entityMap[player.id] = playerEntity
-            self.originalPositions[player.id] = playerEntity.position(relativeTo: nil) // Store WORLD position
+            playerContainer.position = arPosition
+            playerContainer.name = "player_\(player.id)"
+            self.mainAnchor.addChild(playerContainer)
+            self.entityMap[player.id] = playerContainer
+            self.originalPositions[player.id] = playerContainer.position(relativeTo: nil) // Store WORLD position
             
             // Make entity draggable
-            playerEntity.generateCollisionShapes(recursive: false)
+            playerContainer.generateCollisionShapes(recursive: false)
         }
         // Balls
         for ball in play.balls {
             let arPosition2D = map2DToAR(ball.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType)
             let ballARPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
-            let ballEntity: ModelEntity
+
+            let ballContainer = ModelEntity()
+
             if let loaded = try? ModelEntity.loadModel(named: "ball") {
                 print("DEBUG: Loaded ball model")
-                ballEntity = loaded
-                ballEntity.scale = SIMD3<Float>(repeating: 0.00045)
-                
-                // Create a MUCH bigger collision shape for easier selection
-                let collisionSphere = CollisionComponent(
-                    shapes: [.generateSphere(radius: 0.3)],
-                    mode: .trigger,
-                    filter: .sensor
-                )
-                ballEntity.collision = collisionSphere
+                let ballModel = loaded
+                ballModel.scale = SIMD3<Float>(repeating: 0.00045)
+                ballContainer.addChild(ballModel)
             } else {
                 print("DEBUG: Failed to load ball model, using fallback orange sphere.")
                 let ballMaterial = SimpleMaterial(color: .orange, isMetallic: false)
-                ballEntity = ModelEntity(mesh: .generateSphere(radius: 0.015), materials: [ballMaterial])
-                
-                // Create a MUCH bigger collision shape for easier selection
-                let collisionSphere = CollisionComponent(
-                    shapes: [.generateSphere(radius: 0.3)],
-                    mode: .trigger,
-                    filter: .sensor
-                )
-                ballEntity.collision = collisionSphere
+                let ballModel = ModelEntity(mesh: .generateSphere(radius: 0.015), materials: [ballMaterial])
+                ballContainer.addChild(ballModel)
             }
-            
-            ballEntity.position = ballARPosition
-            ballEntity.name = "ball_\(ball.id)"
-            self.mainAnchor.addChild(ballEntity)
-            self.entityMap[ball.id] = ballEntity
-            self.originalPositions[ball.id] = ballEntity.position(relativeTo: nil) // Store WORLD position
+
+            // Create a MUCH bigger collision shape for easier selection
+            let collisionSphere = CollisionComponent(
+                shapes: [.generateSphere(radius: 0.3)],
+                mode: .trigger,
+                filter: .sensor
+            )
+            ballContainer.collision = collisionSphere
+
+            ballContainer.position = ballARPosition
+            ballContainer.name = "ball_\(ball.id)"
+            self.mainAnchor.addChild(ballContainer)
+            self.entityMap[ball.id] = ballContainer
+            self.originalPositions[ball.id] = ballContainer.position(relativeTo: nil) // Store WORLD position
             
             // Make entity draggable
-            ballEntity.generateCollisionShapes(recursive: false)
+            ballContainer.generateCollisionShapes(recursive: false)
         }
         // Opponents
         for opponent in play.opponents {
             let arPosition2D = map2DToAR(opponent.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight, courtType: play.courtType)
             let arPosition = SIMD3<Float>(arPosition2D.x, 0.05, arPosition2D.z) // Set Y to 0.05 to keep above court
-            let opponentEntity: ModelEntity
+            
+            let opponentContainer = ModelEntity()
+
             if let loaded = try? ModelEntity.loadModel(named: "cylinder") {
                 print("DEBUG: Loaded cylinder model for opponent \(opponent.number)")
-                opponentEntity = loaded
-                opponentEntity.scale = SIMD3<Float>(repeating: 0.0002)
-                
+                let opponentModel = loaded
+                opponentModel.scale = SIMD3<Float>(repeating: 0.0002)
                 let opponentMaterial = SimpleMaterial(color: .red, isMetallic: false)
-                opponentEntity.model?.materials = [opponentMaterial]
+                opponentModel.model?.materials = [opponentMaterial]
+                opponentContainer.addChild(opponentModel)
                 
-                // Create a MUCH bigger collision shape for easier selection
                 let collisionBox = CollisionComponent(
                     shapes: [.generateBox(size: [0.3, 0.3, 0.3])],
                     mode: .trigger,
                     filter: .sensor
                 )
-                opponentEntity.collision = collisionBox
+                opponentContainer.collision = collisionBox
             } else {
                 print("DEBUG: Failed to load cylinder model for opponent \(opponent.number), using fallback sphere.")
-                opponentEntity = ModelEntity(mesh: .generateSphere(radius: 0.008), materials: [SimpleMaterial(color: .red, isMetallic: false)])
+                let opponentModel = ModelEntity(mesh: .generateSphere(radius: 0.008), materials: [SimpleMaterial(color: .red, isMetallic: false)])
+                opponentContainer.addChild(opponentModel)
                 
-                // Create a MUCH bigger collision shape for easier selection
                 let collisionSphere = CollisionComponent(
                     shapes: [.generateSphere(radius: 0.3)],
                     mode: .trigger,
                     filter: .sensor
                 )
-                opponentEntity.collision = collisionSphere
+                opponentContainer.collision = collisionSphere
             }
             
-            opponentEntity.position = arPosition
-            opponentEntity.name = "opponent_\(opponent.id)"
-            self.mainAnchor.addChild(opponentEntity)
-            self.entityMap[opponent.id] = opponentEntity
-            self.originalPositions[opponent.id] = opponentEntity.position(relativeTo: nil) // Store WORLD position
+            opponentContainer.position = arPosition
+            opponentContainer.name = "opponent_\(opponent.id)"
+            self.mainAnchor.addChild(opponentContainer)
+            self.entityMap[opponent.id] = opponentContainer
+            self.originalPositions[opponent.id] = opponentContainer.position(relativeTo: nil) // Store WORLD position
             
             // Make entity draggable
-            opponentEntity.generateCollisionShapes(recursive: false)
+            opponentContainer.generateCollisionShapes(recursive: false)
         }
         // Print camera and entity positions for debugging
         if let cameraPosition = cameraPosition() {
