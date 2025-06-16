@@ -301,6 +301,23 @@ struct WhiteboardView: View {
                 }
             }
         }
+        // Player label prompt alert
+        .alert("Enter Player Label", isPresented: $showPlayerLabelPrompt, actions: {
+            TextField("e.g. GK, CB, QB", text: $playerLabelInput)
+            Button("Add") {
+                if let pos = pendingPlayerPosition {
+                    addPlayerAt(position: pos, customLabel: playerLabelInput)
+                }
+                pendingPlayerPosition = nil
+                playerLabelInput = ""
+                isAddingPlayer = false
+            }
+            Button("Cancel", role: .cancel) {
+                pendingPlayerPosition = nil
+                playerLabelInput = ""
+                isAddingPlayer = false
+            }
+        })
     }
 
     var body: some View {
@@ -821,29 +838,15 @@ struct WhiteboardView: View {
                                     showPlayerLabelPrompt = true
                                 } else {
                                     addPlayerAt(position: adjustedPosition)
+                                    isAddingPlayer = false
                                 }
                             } else {
                                 print("Tap outside drawing bounds.")
+                                isAddingPlayer = false
                             }
-                            isAddingPlayer = false
                         }
                 )
         }
-        // Player label prompt alert
-        .alert("Enter Player Label", isPresented: $showPlayerLabelPrompt, actions: {
-            TextField("e.g. GK, CB, QB", text: $playerLabelInput)
-            Button("Add") {
-                if let pos = pendingPlayerPosition {
-                    addPlayerAt(position: pos, customLabel: playerLabelInput)
-                }
-                pendingPlayerPosition = nil
-                playerLabelInput = ""
-            }
-            Button("Cancel", role: .cancel) {
-                pendingPlayerPosition = nil
-                playerLabelInput = ""
-            }
-        })
     }
     
     // Add basketball overlay
