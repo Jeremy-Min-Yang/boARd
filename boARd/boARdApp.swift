@@ -1,11 +1,8 @@
 import SwiftUI
-import FirebaseCore
 
 @main
 struct boARdApp: App {
-    @StateObject private var authViewModel = AuthViewModel()
     @State private var isLoading = true
-    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     // AR state at app level
     @State private var showARSheet = false
     @State private var arPlay: Models.SavedPlay? = nil
@@ -28,40 +25,26 @@ struct boARdApp: App {
     
     var body: some Scene {
         WindowGroup {
-            Group {
-                if authViewModel.user == nil {
-                    AuthView()
-                        .environmentObject(authViewModel)
-                } else if authViewModel.justSignedUp && !authViewModel.hasCompletedOnboarding {
-                    OnboardingView()
-                        .environmentObject(authViewModel)
-                } else {
-                    NavigationView {
-                        ZStack {
-                            HomeScreen(
-                                showARSheet: $showARSheet,
-                                arPlay: $arPlay
-                            )
-                            .opacity(isLoading ? 0 : 1)
-                            if isLoading {
-                                LoadingView()
-                                    .onAppear {
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                            withAnimation {
-                                                isLoading = false
-                                            }
-                                        }
+            NavigationView {
+                ZStack {
+                    HomeScreen(
+                        showARSheet: $showARSheet,
+                        arPlay: $arPlay
+                    )
+                    .opacity(isLoading ? 0 : 1)
+                    if isLoading {
+                        LoadingView()
+                            .onAppear {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                    withAnimation {
+                                        isLoading = false
                                     }
+                                }
                             }
-                        }
                     }
-                    .navigationViewStyle(StackNavigationViewStyle())
-                    .environmentObject(authViewModel)
                 }
             }
-            .onAppear {
-                print("Auth State -- user: \(String(describing: authViewModel.user?.uid)), justSignedUp: \(authViewModel.justSignedUp), hasCompletedOnboarding: \(authViewModel.hasCompletedOnboarding)")
-            }
+            .navigationViewStyle(StackNavigationViewStyle())
             .fullScreenCover(isPresented: $showARSheet) {
                 // Content for the sheet
                 if let play = arPlay {

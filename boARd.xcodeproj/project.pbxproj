@@ -41,14 +41,14 @@
 		09B94BCB2DE598970097DDA9 /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09B94BCA2DE598970097DDA9 /* ARKit.framework */; };
 		09B94BCD2DE598A10097DDA9 /* RealityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 09B94BCC2DE598A10097DDA9 /* RealityKit.framework */; };
 		09E06C052DE1D29B00D11095 /* SavedPlayService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09E06C042DE1D29B00D11095 /* SavedPlayService.swift */; };
-		09E06C082DE2F8E300D11095 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09E06C072DE2F8E300D11095 /* AppDelegate.swift */; };
+		
 		58A4C39128F0E72C00E16278 /* boARdApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4C39028F0E72C00E16278 /* boARdApp.swift */; };
 		58A4C39328F0E72C00E16278 /* HomeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4C39228F0E72C00E16278 /* HomeScreen.swift */; };
 		58A4C39528F0E72E00E16278 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 58A4C39428F0E72E00E16278 /* Assets.xcassets */; };
 		58A4C39828F0E72E00E16278 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 58A4C39728F0E72E00E16278 /* Preview Assets.xcassets */; };
 		58A4C3A028F0E74700E16278 /* WhiteboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A4C39F28F0E74700E16278 /* WhiteboardView.swift */; };
 		EC1609BD2DE7070D00E4C4E0 /* ball.usdz in Resources */ = {isa = PBXBuildFile; fileRef = EC1609BC2DE7070D00E4C4E0 /* ball.usdz */; };
-		EC1609BF2DE7071B00E4C4E0 /* hoop_court.usdz in Resources */ = {isa = PBXBuildFile; fileRef = EC1609BE2DE7071B00E4C4E0 /* hoop_court.usdz */; };
+        EC1609BF2DE7071B00E4C4E0 /* basketballCourt.usdz in Resources */ = {isa = PBXBuildFile; fileRef = EC1609BE2DE7071B00E4C4E0 /* basketballCourt.usdz */; };
 		EC1609C32DE711CE00E4C4E0 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = EC1609C22DE711CE00E4C4E0 /* GoogleService-Info.plist */; };
 		EC1609C52DE741E100E4C4E0 /* cylinder.usdz in Resources */ = {isa = PBXBuildFile; fileRef = EC1609C42DE741E100E4C4E0 /* cylinder.usdz */; };
 		EC1609E42DE752B200E4C4E0 /* FocusEntity in Frameworks */ = {isa = PBXBuildFile; productRef = EC1609E32DE752B200E4C4E0 /* FocusEntity */; };
@@ -86,7 +86,7 @@
 		09B94BCA2DE598970097DDA9 /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
 		09B94BCC2DE598A10097DDA9 /* RealityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RealityKit.framework; path = System/Library/Frameworks/RealityKit.framework; sourceTree = SDKROOT; };
 		09E06C042DE1D29B00D11095 /* SavedPlayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedPlayService.swift; sourceTree = "<group>"; };
-		09E06C072DE2F8E300D11095 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		
 		58A4C38D28F0E72C00E16278 /* boARd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = boARd.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		58A4C39028F0E72C00E16278 /* boARdApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = boARdApp.swift; sourceTree = "<group>"; };
 		58A4C39228F0E72C00E16278 /* HomeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeScreen.swift; sourceTree = "<group>"; };
@@ -95,7 +95,7 @@
 		58A4C39928F0E72E00E16278 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		58A4C39F28F0E74700E16278 /* WhiteboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhiteboardView.swift; sourceTree = "<group>"; };
 		EC1609BC2DE7070D00E4C4E0 /* ball.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = ball.usdz; sourceTree = "<group>"; };
-		EC1609BE2DE7071B00E4C4E0 /* hoop_court.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = hoop_court.usdz; sourceTree = "<group>"; };
+        EC1609BE2DE7071B00E4C4E0 /* basketballCourt.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = basketballCourt.usdz; sourceTree = "<group>"; };
 		EC1609C22DE711CE00E4C4E0 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		EC1609C42DE741E100E4C4E0 /* cylinder.usdz */ = {isa = PBXFileReference; lastKnownFileType = file; path = cylinder.usdz; sourceTree = "<group>"; };
 		EC3802622DE898CF00EF5A83 /* AR.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AR.swift; sourceTree = "<group>"; };
@@ -144,7 +144,7 @@
 				091524E82DF0903B00671E84 /* ShareSheet.swift */,
 				58A4C38F28F0E72C00E16278 /* boARd */,
 				58A4C38E28F0E72C00E16278 /* Products */,
-				09E06C072DE2F8E300D11095 /* AppDelegate.swift */,
+				
 				09B94BC92DE598970097DDA9 /* Frameworks */,
 				092997522DEA22A80073EBF9 /* UserService.swift */,
 				091524EA2DF1488000671E84 /* SportSelectionView.swift */,
@@ -173,7 +173,7 @@
 				0917D4EC2DD1FEF700F49352 /* OpponentsView.swift */,
 				0917D4ED2DD1FEF700F49352 /* PlayersView.swift */,
 				09ACAB782DD8BC2C006310D7 /* ProfileView.swift */,
-				EC1609BE2DE7071B00E4C4E0 /* hoop_court.usdz */,
+                EC1609BE2DE7071B00E4C4E0 /* basketballCourt.usdz */,
 				09B1BAC02DF1A0790016A8B9 /* footballfield.usdz */,
 				09B1BAD22DF1A94A0016A8B9 /* soccerfield.usdz */,
 				09B1BAC22DF1A0870016A8B9 /* football.usdz */,
@@ -275,7 +275,7 @@
 				EC1609BD2DE7070D00E4C4E0 /* ball.usdz in Resources */,
 				58A4C39828F0E72E00E16278 /* Preview Assets.xcassets in Resources */,
 				09B1BAC72DF1A09B0016A8B9 /* soccerball.usdz in Resources */,
-				EC1609BF2DE7071B00E4C4E0 /* hoop_court.usdz in Resources */,
+                EC1609BF2DE7071B00E4C4E0 /* basketballCourt.usdz in Resources */,
 				0917D4FB2DD1FEF700F49352 /* Preview Assets.xcassets in Resources */,
 				09B1BAC32DF1A0870016A8B9 /* football.usdz in Resources */,
 				09B1BAC12DF1A0790016A8B9 /* footballfield.usdz in Resources */,
@@ -294,7 +294,7 @@
 				58A4C39328F0E72C00E16278 /* HomeScreen.swift in Sources */,
 				09B1BAD92DF1BAFA0016A8B9 /* UploadPlayView.swift in Sources */,
 				58A4C3A028F0E74700E16278 /* WhiteboardView.swift in Sources */,
-				09E06C082DE2F8E300D11095 /* AppDelegate.swift in Sources */,
+				
 				58A4C39128F0E72C00E16278 /* boARdApp.swift in Sources */,
 				09ACAB7B2DD8BE85006310D7 /* OnboardingView.swift in Sources */,
 				0917D4F22DD1FEF700F49352 /* BasketballsView.swift in Sources */,

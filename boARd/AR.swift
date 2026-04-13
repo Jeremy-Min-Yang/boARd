@@ -42,7 +42,7 @@ class ARModel {
         } else if modelName == "soccerfield" {
             filename = "soccerfield.usdz"
         } else if modelName == "footballfield" {
-            filename = "footballfield.usdz"
+            filename = "footballField.usdz"
         } else {
             filename = modelName + ".usdz"
         }
@@ -53,12 +53,12 @@ class ARModel {
             }, receiveValue: { modelEntity in
                 // Custom scaling for specific models
                 switch self.modelName {
-                case "hoop_court":
-                    modelEntity.scale = SIMD3<Float>(repeating: 0.0003)
+                case "basketballCourt":
+                    // Match court scaling/orientation to other fields so it lays flat
+                    modelEntity.scale = SIMD3<Float>(repeating: 0.034)
                     modelEntity.setPosition(.zero, relativeTo: nil)
-                    // Restore original orientation (no rotation or .pi/2 around Y)
-                    modelEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
-                    print("DEBUG: Applied scaling and orientation to hoop_court.")
+                    modelEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
+                    print("DEBUG: Applied scaling and orientation to basketballCourt (flat).")
                 case "soccerfield":
                     modelEntity.scale = SIMD3<Float>(repeating: 0.008)
                     modelEntity.setPosition(.zero, relativeTo: nil)
@@ -123,8 +123,8 @@ struct ContentView: View {
         if let path = Bundle.main.resourcePath, let files = try? filemanager.contentsOfDirectory(atPath: path) {
             switch play.courtType {
             case "Full Court", "Half Court":
-                if files.contains("hoop_court.usdz") {
-                    availableModels.append(ARModel(modelName: "hoop_court"))
+                if files.contains("basketballCourt.usdz") {
+                    availableModels.append(ARModel(modelName: "basketballCourt"))
                 }
                 if files.contains("ball.usdz") {
                     availableModels.append(ARModel(modelName: "ball"))
@@ -137,7 +137,7 @@ struct ContentView: View {
                     availableModels.append(ARModel(modelName: "soccerball"))
                 }
             case "Football Field":
-                if files.contains("footballfield.usdz") {
+                if files.contains("footballField.usdz") {
                     availableModels.append(ARModel(modelName: "footballfield"))
                 }
                 if files.contains("football.usdz") {
@@ -195,12 +195,12 @@ struct ContentView: View {
                             .clipShape(Circle())
                     }
                     .padding(.trailing, 20)
-                    .padding(.bottom, placedModels.contains("hoop_court") ? 100 : 20) // Adjust bottom padding if play button is visible
+                    .padding(.bottom, placedModels.contains("basketballCourt") ? 100 : 20) // Adjust bottom padding if play button is visible
                 }
             }
             // Play button
             let _ = { print("DEBUG: Play button condition - placedModels: \(placedModels), isAnimating: \(isAnimating)") }()
-            if placedModels.contains("hoop_court") || placedModels.contains("soccerfield") || placedModels.contains("footballfield") {
+            if placedModels.contains("basketballCourt") || placedModels.contains("soccerfield") || placedModels.contains("footballfield") {
                 Button(action: {
                     print("DEBUG: Play button pressed.")
                     guard let arView = arViewInstance else {
@@ -232,19 +232,8 @@ struct ContentView: View {
         // Prepare animation data for all players and balls with assigned paths
         var newAnimationData: [UUID: ARAnimationData] = [:]
         
-        let courtSize: CGSize
-        switch play.courtType {
-        case "Full Court":
-            courtSize = CGSize(width: 300, height: 600)
-        case "Half Court":
-            courtSize = CGSize(width: 300, height: 300)
-        case "Soccer Pitch":
-            courtSize = CGSize(width: 350, height: 500)
-        case "Football Field":
-            courtSize = CGSize(width: 300, height: 600)
-        default:
-            courtSize = CGSize(width: 300, height: 300)
-        }
+        let boundary = play.courtTypeEnum.drawingBoundary
+        let courtSize = CGSize(width: boundary.width, height: boundary.height)
 
         let arCourtWidth: Float = 0.2
         let arCourtHeight: Float = arCourtWidth * Float(courtSize.height / courtSize.width)
@@ -458,7 +447,7 @@ struct ARViewContainer: UIViewRepresentable {
                     clonedEntity.collision = CollisionComponent(shapes: [collisionShape])
                 }
                 if let customARView = uiView as? CustomARView {
-                    if model.modelName == "hoop_court" || model.modelName == "soccerfield" || model.modelName == "footballfield" {
+                    if model.modelName == "basketballCourt" || model.modelName == "soccerfield" || model.modelName == "footballfield" {
                         if let focusPosition = customARView.focusEntityPosition() {
                             customARView.mainAnchor.setPosition(focusPosition, relativeTo: nil)
                             print("[DEBUG] Court anchor placed at: \(customARView.mainAnchor.position(relativeTo: nil))")
@@ -467,11 +456,15 @@ struct ARViewContainer: UIViewRepresentable {
                                 print("[DEBUG] Camera position: \(camPos)")
                             }
                             clonedEntity.setPosition(.zero, relativeTo: nil)
-                            // Always set the same fixed rotation
-                            if model.modelName == "soccerfield" || model.modelName == "footballfield" {
+                            // Always set the same fixed rotation: lay courts flat on the X axis
+                            if model.modelName == "soccerfield" || model.modelName == "footballfield" || model.modelName == "basketballCourt" {
+                                // Lay flat only (no additional Y rotation)
                                 clonedEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
-                            } else if model.modelName == "hoop_court" {
-                                clonedEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
+                                // Debug: measure 3D model footprint (after orientation) for comparison
+                                let boundsAfterRotate = clonedEntity.visualBounds(relativeTo: nil)
+                                let width3D = boundsAfterRotate.extents.x
+                                let depth3D = boundsAfterRotate.extents.z
+                                print("[COMPARE] 3D court '\(model.modelName)' extents (x,z): (\(width3D), \(depth3D)) aspect z/x=\(depth3D / max(0.0001, width3D))")
                             }
                             customARView.mainAnchor.addChild(clonedEntity)
                             customARView.lastPlacedEntity = nil // Prevent selection for dragging
@@ -484,21 +477,19 @@ struct ARViewContainer: UIViewRepresentable {
                                 }
                             }
                             // Call placePlayersAndBalls once to add all assets
-                            let courtSize: CGSize
-                            switch play.courtType {
-                            case "Full Court":
-                                courtSize = CGSize(width: 300, height: 600)
-                            case "Half Court":
-                                courtSize = CGSize(width: 300, height: 300)
-                            case "Soccer Pitch":
-                                courtSize = CGSize(width: 350, height: 500)
-                            case "Football Field":
-                                courtSize = CGSize(width: 300, height: 600)
-                            default:
-                                courtSize = CGSize(width: 300, height: 300)
-                            }
+                            let placementBoundary = play.courtTypeEnum.drawingBoundary
+                            let courtSize = CGSize(width: placementBoundary.width, height: placementBoundary.height)
+                            // Keep a fixed AR width but set height to match the model's measured aspect ratio,
+                            // so 2D mapping aligns with the actual 3D footprint.
+                            let measured = clonedEntity.visualBounds(relativeTo: nil)
+                            let measuredAspectZOverX = measured.extents.z / max(0.0001, measured.extents.x)
                             let arCourtWidth: Float = 0.2
-                            let arCourtHeight: Float = arCourtWidth * Float(courtSize.height / courtSize.width)
+                            let arCourtHeight: Float = arCourtWidth * measuredAspectZOverX
+                            // Debug: print target 2D aspect and AR mapping aspect
+                            let aspect2D = Float(courtSize.height / courtSize.width)
+                            let aspectAR = arCourtHeight / max(0.0001, arCourtWidth)
+                            print("[COMPARE] 2D courtType '\(play.courtType)' size=\(courtSize) aspect h/w=\(aspect2D)")
+                            print("[COMPARE] Mapping AR dimensions (width, height): (\(arCourtWidth), \(arCourtHeight)) aspect h/w=\(aspectAR)")
                             customARView.placePlayersAndBalls(for: play, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
                             customARView.printEntityHierarchy()
                             DispatchQueue.main.async {
@@ -572,7 +563,7 @@ struct ARViewContainer: UIViewRepresentable {
                         }
                     }
                 }
-                if model.modelName == "hoop_court", let customARView = uiView as? CustomARView {
+                if model.modelName == "basketballCourt", let customARView = uiView as? CustomARView {
                     customARView.toggleFocusEntity(isVisible: false)
                 }
             } else {
@@ -893,8 +884,8 @@ class CustomARView: ARView {
         }
         if let entity = self.entity(at: location) as? ModelEntity {
             print("[DEBUG] entity(at:) returned: \(entity.name)")
-            // Allow any ModelEntity except hoop_court to be selected for dragging
-            if entity.name != "hoop_court" {
+            // Allow any ModelEntity except basketballCourt to be selected for dragging
+            if entity.name != "basketballCourt" {
                 self.lastPlacedEntity = entity
                 print("[DEBUG] lastPlacedEntity set to: \(entity.name), position: \(entity.position)")
                 // Visual feedback: scale up briefly
@@ -965,8 +956,10 @@ class CustomARView: ARView {
             let materialCount = modelComponent.materials.count
             entity.model?.materials = Array(repeating: transparentMaterial, count: max(1, materialCount))
         }
-        // Rotate the preview court by 90 degrees around Y axis
-        entity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
+        // Keep model's orientation unless it's a court; lay courts flat for preview
+        if model.modelName == "basketballCourt" || model.modelName == "soccerfield" || model.modelName == "footballfield" {
+            entity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
+        }
         previewModelEntity = entity
         previewAnchor.addChild(entity)
         if !self.scene.anchors.contains(where: { $0 === previewAnchor }) {
@@ -1051,9 +1044,9 @@ class CustomARView: ARView {
         // originalPositions.removeAll() // Also clear original positions if re-placing everything
 
         // Remove court collision to prevent blocking hit tests
-        if let courtEntity = mainAnchor.children.first(where: { $0.name == "hoop_court" }) as? ModelEntity {
+        if let courtEntity = mainAnchor.children.first(where: { $0.name == "basketballCourt" }) as? ModelEntity {
             courtEntity.collision = nil
-            print("[DEBUG] Set hoop_court collision to nil")
+            print("[DEBUG] Set basketballCourt collision to nil")
         }
         // Players
         for player in play.players {
@@ -1594,11 +1587,11 @@ func map2DToAR(_ point: CGPoint, courtSize: CGSize, arCourtWidth: Float, arCourt
     let xNorm = Float(point.x / courtSize.width)
     let zNorm = Float(point.y / courtSize.height)
     if courtType == "Soccer Pitch" {
-        // Corrected mapping for Soccer
+        // Soccer: flip Z so top/bottom match 2D
         let x = (xNorm - 0.5) * arCourtWidth
-        let z = (0.5 - zNorm) * arCourtHeight // Flipped to match field orientation
-        // Offsets for the soccer model
-        return SIMD3<Float>(x - 0.18, 0.05, z - 0.07)
+        let z = (zNorm - 0.5) * arCourtHeight
+        // Offsets for the soccer model (adjust z to move placement DOWN on the field)
+        return SIMD3<Float>(x - 0.13, 0.05, z - 0.012)
     } else if courtType == "Football Field" {
         // Rotated mapping for Football: 2D Y -> 3D X, 2D X -> 3D Z
         let x = (0.5 - zNorm) * arCourtHeight // Corrected up/down path direction

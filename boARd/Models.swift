@@ -282,6 +282,7 @@ struct Models {
         public var dateCreated: Date
         public var lastModified: Date
         public var courtType: String
+			public var thumbnailFilename: String?
 
         public var drawings: [DrawingData]
         public var players: [PlayerData]

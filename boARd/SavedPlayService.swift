@@ -324,7 +324,7 @@ public class SavedPlayService {
     static func convertToDrawing(drawingData: Models.DrawingData) -> Drawing {
         let type = DrawingTool(rawValue: drawingData.type) ?? .pen
         let style = PenStyle(rawValue: drawingData.style) ?? .normal
-        let color = Color.black // Placeholder: Convert colorString back to Color
+        let color = Color.fromHexString(drawingData.color)
         let points = drawingData.points.map { $0.cgPoint }
         let normalizedPoints = drawingData.normalizedPoints?.map { $0.cgPoint }
         var path = Path()
@@ -349,7 +349,7 @@ public class SavedPlayService {
     
     // Convert Drawing (UI model) to DrawingData
     static func convertToDrawingData(drawing: Drawing) -> Models.DrawingData {
-        let colorString = "black" // Placeholder: Update if your Drawing model has dynamic color
+        let colorString = drawing.color.toHexString()
         return Models.DrawingData(
             id: drawing.id,
             color: colorString,

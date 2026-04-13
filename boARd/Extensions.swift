@@ -40,6 +40,45 @@ extension CGVector {
     }
 }
 
+// MARK: - Color Extensions
+extension Color {
+    /// Serializes to a hex string `#RRGGBBAA` for storage.
+    func toHexString() -> String {
+        let ui = UIColor(self)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "#%02X%02X%02X%02X",
+                      Int(r * 255), Int(g * 255), Int(b * 255), Int(a * 255))
+    }
+
+    /// Restores a `Color` from a hex string (`#RRGGBBAA`) or a named color string.
+    static func fromHexString(_ hex: String) -> Color {
+        let clean = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Support legacy named color strings written before hex was implemented
+        switch clean.lowercased() {
+        case "black":  return .black
+        case "white":  return .white
+        case "red":    return .red
+        case "blue":   return .blue
+        case "green":  return .green
+        case "orange": return .orange
+        case "yellow": return .yellow
+        case "purple": return .purple
+        default: break
+        }
+        var hexDigits = clean.hasPrefix("#") ? String(clean.dropFirst()) : clean
+        guard hexDigits.count == 8 else { return .black }
+        var value: UInt64 = 0
+        guard Scanner(string: hexDigits).scanHexInt64(&value) else { return .black }
+        return Color(UIColor(
+            red:   CGFloat((value >> 24) & 0xFF) / 255,
+            green: CGFloat((value >> 16) & 0xFF) / 255,
+            blue:  CGFloat((value >>  8) & 0xFF) / 255,
+            alpha: CGFloat( value        & 0xFF) / 255
+        ))
+    }
+}
+
 // MARK: - View Extensions
 extension View {
     @ViewBuilder func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {

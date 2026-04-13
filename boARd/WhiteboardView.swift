@@ -1,13 +1,10 @@
 import SwiftUI
 import PDFKit
 import UIKit
-import Firebase
-import FirebaseAuth
 
 
 // Now modify the main WhiteboardView to use these components
 struct WhiteboardView: View {
-    @EnvironmentObject var authViewModel: AuthViewModel // Added AuthViewModel
     let courtType: CourtType
     @State private var playToLoad: Models.SavedPlay?
     var isEditable: Bool = true // Default to true (for new plays)
@@ -1813,14 +1810,6 @@ struct WhiteboardView: View {
             return
         }
 
-        // Ensure user is logged in before proceeding
-        guard let authenticatedUserID = Auth.auth().currentUser?.uid else {
-            print("Error: User not logged in. Cannot save play.")
-            self.saveErrorMessage = "You must be logged in to save plays."
-            self.activeAlert = .saveError
-            return
-        }
-
         // 2. Convert Data
         let drawingData: [Models.DrawingData] = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
         let playerData: [Models.PlayerData] = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
@@ -1831,8 +1820,8 @@ struct WhiteboardView: View {
         let newPlay: Models.SavedPlay = Models.SavedPlay(
             firestoreID: playToLoad?.firestoreID, 
             id: playToLoad?.id ?? UUID(),
-            userID: authenticatedUserID, // Use guarded non-optional userID
-            teamID: playToLoad?.teamID, 
+            userID: nil,
+            teamID: nil, 
             name: name,
             dateCreated: playToLoad?.dateCreated ?? Date(),
             lastModified: Date(),
@@ -1846,29 +1835,36 @@ struct WhiteboardView: View {
         // Print success message *before* attempting to persist
         print("Preparing to save Play '\(name)' with ID: \(newPlay.id)")
 
-        // 4. Persist
-        // The guard for authenticatedUserID is now at the beginning of the function.
-        
-        let teamID = UserService.shared.getCurrentUserTeamID()
-        
-        SavedPlayService.shared.savePlay(newPlay, forUserID: authenticatedUserID, teamID: teamID) { [self] error in // Use authenticatedUserID
-            if let error = error {
-                print("Error saving play: \(error.localizedDescription)")
-                self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
-                self.activeAlert = .saveError
+        // 4. Persist locally with thumbnail
+        if let thumb = ThumbnailService.generateThumbnail(for: newPlay),
+           let filename = ThumbnailService.saveThumbnail(thumb, forPlayId: newPlay.id) {
+            var withThumb = newPlay
+            withThumb.thumbnailFilename = filename
+            var localPlays = SavedPlayService.shared.loadPlaysLocally()
+            if let idx = localPlays.firstIndex(where: { $0.id == withThumb.id }) {
+                localPlays[idx] = withThumb
             } else {
-                print("Play '\(name)' saved successfully with ID: \(newPlay.id), TeamID: \(teamID ?? "None")")
-                self.playToLoad = newPlay
-                self.playNameInput = "" // Clear input field
-                self.showingSaveAlert = false // Dismiss sheet
-                self.isDirty = false // Mark as not dirty
-                self.deleteDraft() // Clear any auto-saved draft for this play
-                NotificationCenter.default.post(name: NSNotification.Name("PlaySavedNotification"), object: nil)
-                // If this was editing an existing play, playToLoad should be updated or reloaded
-                // If it was a new play, we might want to set playToLoad to this newPlay
-                // For simplicity, we can rely on a list refresh or similar mechanism for now.
+                localPlays.append(withThumb)
             }
+            SavedPlayService.shared.savePlaysLocally(localPlays)
+            print("Play '\(name)' saved locally with thumbnail: \(filename)")
+            self.playToLoad = withThumb
+        } else {
+            var localPlays = SavedPlayService.shared.loadPlaysLocally()
+            if let idx = localPlays.firstIndex(where: { $0.id == newPlay.id }) {
+                localPlays[idx] = newPlay
+            } else {
+                localPlays.append(newPlay)
+            }
+            SavedPlayService.shared.savePlaysLocally(localPlays)
+            print("Play '\(name)' saved locally (no thumbnail).")
+            self.playToLoad = newPlay
         }
+        self.playNameInput = "" // Clear input field
+        self.showingSaveAlert = false // Dismiss sheet
+        self.isDirty = false // Mark as not dirty
+        self.deleteDraft() // Clear any auto-saved draft for this play
+        NotificationCenter.default.post(name: NSNotification.Name("PlaySavedNotification"), object: nil)
     }
 
     // Add the completion handler function
@@ -2118,15 +2114,6 @@ struct WhiteboardView: View {
         }
         guard !name.isEmpty else { return }
 
-        // Ensure user is logged in and get their ID and current team ID
-        guard let authenticatedUserID = Auth.auth().currentUser?.uid else {
-            print("Error: User not logged in. Cannot save new play.")
-            self.saveErrorMessage = "You must be logged in to save plays."
-            self.activeAlert = .saveError
-            return
-        }
-        let currentTeamID = UserService.shared.getCurrentUserTeamID() // May be nil
-
         // 2. Convert Data
         let drawingData: [Models.DrawingData] = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
         let playerData: [Models.PlayerData] = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
@@ -2137,8 +2124,8 @@ struct WhiteboardView: View {
         let newPlay: Models.SavedPlay = Models.SavedPlay(
             firestoreID: nil,                      // Always nil for a new play document
             id: UUID(),                            // Always a new UUID for a new play
-            userID: authenticatedUserID,           // Current user's ID (non-optional)
-            teamID: currentTeamID,                 // Current user's team ID (can be nil)
+            userID: nil,
+            teamID: nil,
             name: name,
             dateCreated: Date(),                   // Current date for new play
             lastModified: Date(),                  // Current date for new play
@@ -2148,24 +2135,28 @@ struct WhiteboardView: View {
             balls: ballData,
             opponents: opponentData
         )
-        
-        SavedPlayService.shared.savePlay(newPlay, forUserID: authenticatedUserID, teamID: currentTeamID) { [self] error in
-            if let error = error {
-                print("Error saving new play: \(error.localizedDescription)")
-                self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
-                self.activeAlert = .saveError
-            } else {
-                print("Play '\(name)' saved successfully as new play with ID: \(newPlay.id), TeamID: \(currentTeamID ?? "None")")
-                self.playToLoad = newPlay
-                self.playNameInput = "" // Clear input
-                self.showingSaveAsAlert = false // Dismiss sheet
-                self.isDirty = false // Mark as not dirty
-                // Potentially update playToLoad to this new play if the user continues editing
-                // self.playToLoad = newPlay 
-                self.deleteDraft() // Clear any auto-saved draft for a new play
-                NotificationCenter.default.post(name: NSNotification.Name("PlaySavedNotification"), object: nil)
-            }
+        // Save locally (generate thumbnail)
+        if let thumb = ThumbnailService.generateThumbnail(for: newPlay),
+           let filename = ThumbnailService.saveThumbnail(thumb, forPlayId: newPlay.id) {
+            var withThumb = newPlay
+            withThumb.thumbnailFilename = filename
+            var localPlays = SavedPlayService.shared.loadPlaysLocally()
+            localPlays.append(withThumb)
+            SavedPlayService.shared.savePlaysLocally(localPlays)
+            print("Play '\(name)' saved locally as new with thumbnail: \(filename)")
+            self.playToLoad = withThumb
+        } else {
+            var localPlays = SavedPlayService.shared.loadPlaysLocally()
+            localPlays.append(newPlay)
+            SavedPlayService.shared.savePlaysLocally(localPlays)
+            print("Play '\(name)' saved locally as new play (no thumbnail).")
+            self.playToLoad = newPlay
         }
+        self.playNameInput = "" // Clear input
+        self.showingSaveAsAlert = false // Dismiss sheet
+        self.isDirty = false // Mark as not dirty
+        self.deleteDraft() // Clear any auto-saved draft for a new play
+        NotificationCenter.default.post(name: NSNotification.Name("PlaySavedNotification"), object: nil)
     }
 
     // Add new function for immediate save
@@ -2184,14 +2175,6 @@ struct WhiteboardView: View {
         }
         guard !name.isEmpty else { return }
 
-        // Ensure user is logged in before proceeding
-        guard let authenticatedUserID = Auth.auth().currentUser?.uid else {
-            print("Error: User not logged in. Cannot save play immediately.")
-            self.saveErrorMessage = "You must be logged in to save plays."
-            self.activeAlert = .saveError
-            return
-        }
-
         let drawingData: [Models.DrawingData] = currentDrawings.map { SavedPlayService.convertToDrawingData(drawing: $0) }
         let playerData: [Models.PlayerData] = currentPlayers.map { SavedPlayService.convertToPlayerData(player: $0) }
         let ballData: [Models.BallData] = currentBalls.map { SavedPlayService.convertToBallData(ball: $0) }
@@ -2199,8 +2182,8 @@ struct WhiteboardView: View {
         let newPlay: Models.SavedPlay = Models.SavedPlay(
             firestoreID: playToLoad?.firestoreID,
             id: playToLoad?.id ?? UUID(),
-            userID: authenticatedUserID, // Use guarded non-optional userID
-            teamID: playToLoad?.teamID, 
+            userID: nil,
+            teamID: nil, 
             name: name,
             dateCreated: playToLoad?.dateCreated ?? Date(),
             lastModified: Date(),
@@ -2210,23 +2193,33 @@ struct WhiteboardView: View {
             balls: ballData, 
             opponents: opponentData 
         )
-        
-        let currentTeamID = UserService.shared.getCurrentUserTeamID() // Renamed from teamID to avoid conflict
-
-        SavedPlayService.shared.savePlay(newPlay, forUserID: authenticatedUserID, teamID: currentTeamID) { [self] error in // Use authenticatedUserID and currentTeamID
-             if let error = error {
-                print("Error saving play immediately: \(error.localizedDescription)")
-                // Update UI to show error if necessary
-                self.saveErrorMessage = "Failed to save play: \(error.localizedDescription)"
-                self.activeAlert = .saveError
+        // Save locally (generate thumbnail)
+        if let thumb = ThumbnailService.generateThumbnail(for: newPlay),
+           let filename = ThumbnailService.saveThumbnail(thumb, forPlayId: newPlay.id) {
+            var withThumb = newPlay
+            withThumb.thumbnailFilename = filename
+            var localPlays = SavedPlayService.shared.loadPlaysLocally()
+            if let idx = localPlays.firstIndex(where: { $0.id == withThumb.id }) {
+                localPlays[idx] = withThumb
             } else {
-                print("Play '\(name)' saved immediately. ID: \(newPlay.id), TeamID: \(currentTeamID ?? "None")")
-                self.isDirty = false
-                self.deleteDraft()
-                NotificationCenter.default.post(name: NSNotification.Name("PlaySavedNotification"), object: nil)
-                onSuccess?()
+                localPlays.append(withThumb)
             }
+            SavedPlayService.shared.savePlaysLocally(localPlays)
+            print("Play '\(name)' saved locally with thumbnail. ID: \(withThumb.id)")
+        } else {
+            var localPlays = SavedPlayService.shared.loadPlaysLocally()
+            if let idx = localPlays.firstIndex(where: { $0.id == newPlay.id }) {
+                localPlays[idx] = newPlay
+            } else {
+                localPlays.append(newPlay)
+            }
+            SavedPlayService.shared.savePlaysLocally(localPlays)
+            print("Play '\(name)' saved locally. ID: \(newPlay.id)")
         }
+        self.isDirty = false
+        self.deleteDraft()
+        NotificationCenter.default.post(name: NSNotification.Name("PlaySavedNotification"), object: nil)
+        onSuccess?()
     }
 
     // --- Auto-Save/Drafts ---

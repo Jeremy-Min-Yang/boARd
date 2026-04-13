@@ -84,15 +84,19 @@ struct ARPlayView: UIViewRepresentable {
         // --- PREVIEW COURT LOGIC ---
         do {
             let previewAnchor = AnchorEntity(world: .zero)
-            let courtEntity = try ModelEntity.loadModel(named: "hoop_court")
+            let courtEntity = try ModelEntity.loadModel(named: "basketballCourt")
             // Make all materials transparent
             if let modelComponent = courtEntity.model {
                 let transparentMaterial = SimpleMaterial(color: .white.withAlphaComponent(0.5), isMetallic: false)
                 let materialCount = modelComponent.materials.count
                 courtEntity.model?.materials = Array(repeating: transparentMaterial, count: max(1, materialCount))
             }
-            courtEntity.scale = [0.0008, 0.0008, 0.0008]
-            courtEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
+            // Scale similarly to other fields and lay flat
+            courtEntity.scale = [0.008, 0.008, 0.008]
+            courtEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
+            // Debug: preview 3D footprint aspect
+            let previewBounds = courtEntity.visualBounds(relativeTo: nil)
+            print("[COMPARE][Preview] 3D 'basketballCourt' extents (x,z): (\(previewBounds.extents.x), \(previewBounds.extents.z)) aspect z/x=\(previewBounds.extents.z / max(0.0001, previewBounds.extents.x))")
             previewAnchor.addChild(courtEntity)
             arView.scene.addAnchor(previewAnchor)
             self.previewAnchor = previewAnchor
@@ -210,14 +214,6 @@ struct ARPlayView: UIViewRepresentable {
             // textEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
             // textEntity.orientation = simd_quatf(angle: .pi, axis: [0, 1, 0])
             playerEntity.addChild(textEntity)
-            print("Added text label \(player.number) to player \(player.id)")
-            print("Children of playerEntity after adding text:", playerEntity.children)
-            // Add a debug sphere above the cylinder to verify child visibility
-            let debugSphere = ModelEntity(mesh: .generateSphere(radius: 0.01), materials: [SimpleMaterial(color: .yellow, isMetallic: false)])
-            debugSphere.position = SIMD3<Float>(0, 0.06, 0)
-            playerEntity.addChild(debugSphere)
-            print("Added debug sphere above player \(player.id)")
-            print("Children of playerEntity after adding debug sphere:", playerEntity.children)
             
             let initialPosAR = ARPlayView.rotate180Y(
                 ARPlayView.map2DToAR(player.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
@@ -312,20 +308,6 @@ struct ARPlayView: UIViewRepresentable {
                 }
             }
         }
-        // At the end of prepareAnimationData, add a floating debug sphere directly to courtAnchor
-        let floatingSphere = ModelEntity(mesh: .generateSphere(radius: 0.02), materials: [SimpleMaterial(color: .red, isMetallic: false)])
-        floatingSphere.position = SIMD3<Float>(0, 0.1, 0) // Well above the court
-        courtAnchor.addChild(floatingSphere)
-        print("Added floating debug sphere to courtAnchor")
-        // Print the full scene hierarchy for courtAnchor
-        print("=== Scene Hierarchy for courtAnchor ===")
-        for child in courtAnchor.children {
-            print("- \(child.name) [\(type(of: child))]")
-            for subchild in child.children {
-                print("  - \(subchild.name) [\(type(of: subchild))]")
-            }
-        }
-        print("=======================================")
         return preparedResult
     }
 
@@ -548,9 +530,11 @@ struct ARPlayView: UIViewRepresentable {
 
         @objc func placeCourtButtonTapped() {
             print("[ARPlayView] Place Court button tapped")
-            if let arView = parent.arViewInstance {
-                parent.placeCourtAtPreviewPosition(arView: arView, context: currentContext!)
+            guard let arView = parent.arViewInstance, let context = currentContext else {
+                print("[ARPlayView] Cannot place court: arViewInstance or currentContext is nil.")
+                return
             }
+            parent.placeCourtAtPreviewPosition(arView: arView, context: context)
         }
     }
 
@@ -558,18 +542,21 @@ struct ARPlayView: UIViewRepresentable {
         return Coordinator(self)
     }
 
-    // Place only the hoop_court at the given position
+    // Place only the basketballCourt at the given position
     func placeCourtOnly(at position: SIMD3<Float>, arView: ARView) -> AnchorEntity? {
         print("[ARPlayView] placeCourtOnly called with position: \(position)")
         let courtEntity: ModelEntity
         do {
-            print("[ARPlayView] Attempting to load 'hoop_court.usdz' from bundle...")
-            courtEntity = try ModelEntity.loadModel(named: "hoop_court")
-            courtEntity.scale = [0.0008, 0.0008, 0.0008]
-            courtEntity.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
-            print("[ARPlayView] Successfully loaded 'hoop_court.usdz' for the court and scaled it. Scale: \(courtEntity.scale)")
+            print("[ARPlayView] Attempting to load 'basketballCourt.usdz' from bundle...")
+            courtEntity = try ModelEntity.loadModel(named: "basketballCourt")
+            courtEntity.scale = [0.008, 0.008, 0.008]
+            courtEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
+            // Debug: placed 3D footprint aspect
+            let placedBounds = courtEntity.visualBounds(relativeTo: nil)
+            print("[COMPARE][Placed] 3D 'basketballCourt' extents (x,z): (\(placedBounds.extents.x), \(placedBounds.extents.z)) aspect z/x=\(placedBounds.extents.z / max(0.0001, placedBounds.extents.x))")
+            print("[ARPlayView] Successfully loaded 'basketballCourt.usdz' for the court and scaled it. Scale: \(courtEntity.scale)")
         } catch {
-            print("[ARPlayView] ERROR loading 'hoop_court.usdz': \(error.localizedDescription). Falling back to default yellow plane.")
+            print("[ARPlayView] ERROR loading 'basketballCourt.usdz': \(error.localizedDescription). Falling back to default yellow plane.")
             let courtSize = self.play.courtTypeEnum.virtualCourtSize
             let arCourtWidthFallback: Float = 0.3 
             let arCourtHeightFallback: Float = 0.3 * Float(courtSize.height / courtSize.width)

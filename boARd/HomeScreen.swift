@@ -1,8 +1,7 @@
 import SwiftUI
-import FirebaseAuth
+import UIKit
 
 struct HomeScreen: View {
-    @EnvironmentObject var authViewModel: AuthViewModel
     @Binding var showARSheet: Bool
     @Binding var arPlay: Models.SavedPlay?
     @State private var selectedTab: MainTab = .home
@@ -16,11 +15,7 @@ struct HomeScreen: View {
     @State private var uploadSuccessPlayID: UUID? = nil
     @State private var showLoginAlert: Bool = false
 
-    // New state for Home Screen Team Plays
-    @State private var teamPlaysForHome: [TeamPlay] = []
-    @State private var isLoadingTeamPlaysForHome: Bool = false
-    @State private var teamPlaysErrorForHome: String? = nil
-    @State private var currentTeamIDForHome: String? = UserService.shared.getCurrentUserTeamID()
+    // Team features disabled in offline mode
 
     // Alert state hoisted from SavedPlaysScreen
     @State private var playToDeleteInHomeScreen: Models.SavedPlay? = nil
@@ -43,12 +38,7 @@ struct HomeScreen: View {
         @Binding var showSportSelectionSheet: Bool
         
         // For mainContentView
-        @ObservedObject var authViewModel: AuthViewModel // Assuming AuthViewModel is ObservableObject
         @Binding var homeScreenSavedPlays: [Models.SavedPlay]
-        @Binding var isLoadingTeamPlaysForHome: Bool
-        @Binding var teamPlaysErrorForHome: String?
-        @Binding var currentTeamIDForHome: String?
-        @Binding var teamPlaysForHome: [TeamPlay]
         let dateFormatter: DateFormatter
         var fetchTeamPlaysForHomeScreen: () -> Void
 
@@ -77,7 +67,7 @@ struct HomeScreen: View {
                     .padding(.top, 8)
                 HStack {
                     Spacer()
-                    Text("Welcome back, \(authViewModel.displayName)!")
+                    Text("Welcome!")
                         .font(.title3)
                         .foregroundColor(.secondary)
                     Spacer()
@@ -98,6 +88,15 @@ struct HomeScreen: View {
                                 navigateToWhiteboard = true
                             }) {
                                 HStack {
+                                    if let filename = play.thumbnailFilename,
+                                       let uiImg = ThumbnailService.loadThumbnail(filename: filename) {
+                                        Image(uiImage: uiImg)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 72, height: 48)
+                                            .clipped()
+                                            .cornerRadius(8)
+                                    }
                                     VStack(alignment: .leading) {
                                         Text(play.name)
                                             .font(.subheadline)
@@ -119,61 +118,7 @@ struct HomeScreen: View {
                     }
                 }
                 .padding(.top, 16)
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("My Team Plays")
-                        .font(.headline)
-                    if isLoadingTeamPlaysForHome {
-                        ProgressView("Loading team plays...")
-                            .padding(.vertical)
-                    } else if let error = teamPlaysErrorForHome {
-                        Text("Error loading team plays: \(error)")
-                            .foregroundColor(.red)
-                    } else if currentTeamIDForHome == nil {
-                        Text("You are not part of a team.")
-                            .foregroundColor(.gray)
-                    } else if teamPlaysForHome.isEmpty {
-                        Text("No plays found for your team yet.")
-                            .foregroundColor(.gray)
-                    } else {
-                        ForEach(teamPlaysForHome.prefix(3)) { play in
-                            Button(action: {
-                                selectedPlay = play.playData
-                                editMode = false
-                                viewOnlyMode = true
-                                navigateToWhiteboard = true
-                            }) {
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text(play.name)
-                                            .font(.subheadline)
-                                            .foregroundColor(.primary)
-                                        Text("By: \(play.createdBy)")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(.gray)
-                                }
-                                .padding(.vertical, 8)
-                                .padding(.horizontal)
-                                .background(Color(.secondarySystemBackground))
-                                .cornerRadius(10)
-                            }
-                        }
-                        if teamPlaysForHome.count > 0 {
-                            Button(action: {
-                                selectedTab = .team
-                            }) {
-                                Text("View All Team Plays")
-                                    .font(.callout)
-                                    .foregroundColor(.blue)
-                                    .padding(.top, 4)
-                            }
-                        }
-                    }
-                }
-                .padding(.top, 24)
+                // Team section hidden in offline mode
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -181,14 +126,16 @@ struct HomeScreen: View {
             .onAppear {
                 homeScreenSavedPlays = SavedPlayService.shared.loadPlaysLocally()
                     .sorted { $0.lastModified > $1.lastModified }
-                fetchTeamPlaysForHomeScreen()
             }
         }
 
         @ViewBuilder
         private var teamTabView: some View {
-            TeamPlaysView(teamID: currentTeamIDForHome ?? "")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack {
+                Text("Teams are unavailable in offline mode.")
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
 
         @ViewBuilder
@@ -211,8 +158,11 @@ struct HomeScreen: View {
 
         @ViewBuilder
         private var profileTabView: some View {
-            ProfileView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack {
+                Text("Profile is unavailable in offline mode.")
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         
         @ViewBuilder
@@ -279,12 +229,7 @@ struct HomeScreen: View {
             TabbedContentWithOverlays(
                 selectedTab: $selectedTab,
                 showSportSelectionSheet: $showSportSelectionSheet,
-                authViewModel: authViewModel, // Pass EnvironmentObject
                 homeScreenSavedPlays: $homeScreenSavedPlays,
-                isLoadingTeamPlaysForHome: $isLoadingTeamPlaysForHome,
-                teamPlaysErrorForHome: $teamPlaysErrorForHome,
-                currentTeamIDForHome: $currentTeamIDForHome,
-                teamPlaysForHome: $teamPlaysForHome,
                 dateFormatter: dateFormatter,
                 fetchTeamPlaysForHomeScreen: fetchTeamPlaysForHomeScreen,
                 showARSheet: $showARSheet,
@@ -345,40 +290,14 @@ struct HomeScreen: View {
     }
 
     func fetchTeamPlaysForHomeScreen() {
-        self.currentTeamIDForHome = UserService.shared.getCurrentUserTeamID()
-        
-        guard let teamID = self.currentTeamIDForHome else {
-            isLoadingTeamPlaysForHome = false
-            teamPlaysForHome = []
-            teamPlaysErrorForHome = nil // Not an error, just not in a team
-            print("DEBUG HomeScreen: User not in a team, not fetching team plays for home.")
-            return
-        }
-        
-        isLoadingTeamPlaysForHome = true
-        teamPlaysErrorForHome = nil
-        
-        TeamService.shared.fetchTeamPlays(teamID: teamID) { plays in
-            DispatchQueue.main.async {
-                isLoadingTeamPlaysForHome = false
-                self.teamPlaysForHome = plays
-                print("DEBUG HomeScreen: Successfully fetched \(self.teamPlaysForHome.count) team plays for team ID \(teamID).")
-                if self.teamPlaysForHome.isEmpty {
-                    print("DEBUG HomeScreen: No plays found for team ID \(teamID) on home screen.")
-                }
-            }
-        }
+        // Offline mode: no-op
     }
 
     func deletePlayFromHomeScreen(play: Models.SavedPlay) {
-        SavedPlayService.shared.deletePlayEverywhere(playID: play.id.uuidString) { _ in
-            // Refresh homeScreenSavedPlays after deletion
-            homeScreenSavedPlays = SavedPlayService.shared.loadPlaysLocally().sorted { $0.lastModified > $1.lastModified }
-            // Also ensure the list within SavedPlaysScreen (if it keeps its own copy) is updated
-            // This might require a more sophisticated state management or callback if SavedPlaysScreen
-            // doesn't directly use homeScreenSavedPlays for its ForEach.
-            // For the simplified version, SavedPlaysScreen will also use homeScreenSavedPlays.
-        }
+        var localPlays = SavedPlayService.shared.loadPlaysLocally()
+        localPlays.removeAll { $0.id == play.id }
+        SavedPlayService.shared.savePlaysLocally(localPlays)
+        homeScreenSavedPlays = localPlays.sorted { $0.lastModified > $1.lastModified }
     }
 }
 
@@ -394,17 +313,11 @@ struct SavedPlaysScreen: View {
     @Binding var playToDeleteFromParent: Models.SavedPlay?
     @Binding var showDeleteConfirmationFromParent: Bool
     @Binding var currentSavedPlays: [Models.SavedPlay] // This is the source of truth for plays
-    @State private var showUploadToTeamSheet = false
-    @State private var playToUploadToTeam: Models.SavedPlay? = nil
-    @State private var userTeamID: String? = UserService.shared.getCurrentUserTeamID()
+    // Upload/Cloud disabled in offline mode
     @State private var showNoTeamAlert = false
 
     // Local state for UI elements within SavedPlaysScreen
-    @State private var syncStatus: String = ""
-    @State private var isSyncing: Bool = false
-    @State private var uploadingPlayID: UUID? = nil
-    @State private var uploadSuccessPlayID: UUID? = nil
-    @State private var showLoginAlert: Bool = false
+    // Cloud sync state removed in offline mode
 
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -423,56 +336,7 @@ struct SavedPlaysScreen: View {
                     .padding(.top, 30)
                     .padding(.bottom, 20)
 
-                // Restored Cloud Sync Section
-                VStack(alignment: .center, spacing: 8) {
-                    Text("Cloud Sync")
-                        .font(.headline)
-                        .padding(.top, 4)
-                    HStack(spacing: 16) {
-                        Spacer()
-                        Button(action: {
-                            isSyncing = true
-                            syncStatus = "Syncing..."
-                            SavedPlayService.shared.downloadAllCloudPlaysToLocal { error in
-                                DispatchQueue.main.async {
-                                    isSyncing = false
-                                    if let error = error {
-                                        syncStatus = "Download failed: \(error.localizedDescription)"
-                                    } else {
-                                        syncStatus = "Downloaded from cloud!"
-                                        // HomeScreen will update currentSavedPlays, which will reflect here
-                                        // No need to manually reload here if currentSavedPlays is the source
-                                    }
-                                }
-                            }
-                        }) {
-                            Label("Sync from Cloud", systemImage: "icloud.and.arrow.down")
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.green.opacity(0.12))
-                                .foregroundColor(.green)
-                                .cornerRadius(10)
-                        }
-                        .disabled(isSyncing)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 4)
-                    if !syncStatus.isEmpty {
-                        Text(syncStatus)
-                            .font(.caption)
-                            .foregroundColor(syncStatus.contains("failed") ? .red : .green)
-                            .padding(.top, 2)
-                    }
-                }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.gray.opacity(0.25), lineWidth: 1.5)
-                        .background(Color(.systemBackground).opacity(0.8).cornerRadius(16))
-                )
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+                // Cloud Sync UI removed in offline mode
 
                 if currentSavedPlays.isEmpty { // Use currentSavedPlays from binding
                     VStack(spacing: 20) {
@@ -536,32 +400,7 @@ struct SavedPlaysScreen: View {
                                                 onDelete: {
                                                     self.playToDeleteFromParent = play
                                                     self.showDeleteConfirmationFromParent = true
-                                                },
-                                                onUpload: {
-                                                    if Auth.auth().currentUser == nil {
-                                                        uploadingPlayID = nil
-                                                        uploadSuccessPlayID = nil
-                                                        showLoginAlert = true
-                                                        return
-                                                    }
-                                                    uploadingPlayID = play.id
-                                                    uploadSuccessPlayID = nil
-                                                    SavedPlayService.shared.savePlay(play, forUserID: Auth.auth().currentUser?.uid ?? "") { error in
-                                                        DispatchQueue.main.async {
-                                                            uploadingPlayID = nil
-                                                            if error == nil {
-                                                                uploadSuccessPlayID = play.id
-                                                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                                                    uploadSuccessPlayID = nil
-                                                                }
-                                                            } else {
-                                                                syncStatus = "Upload failed: \(error?.localizedDescription ?? "Unknown error")"
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                                isUploading: uploadingPlayID == play.id,
-                                                uploadSuccess: uploadSuccessPlayID == play.id
+                                                }
                                             )
                                         }
                                     }
@@ -585,24 +424,12 @@ struct SavedPlaysScreen: View {
                  print("[DEBUG SavedPlaysScreen] onAppear, received \(currentSavedPlays.count) plays from parent.")
             }
         }
-        .alert(isPresented: $showLoginAlert) { // Local alert for login requirement for upload
-             Alert(
-                 title: Text("Login Required"),
-                 message: Text("You must be logged in to upload plays."),
-                 dismissButton: .default(Text("OK"))
-             )
-         }
         .alert(isPresented: $showNoTeamAlert) {
             Alert(
                 title: Text("Not in a Team"),
                 message: Text("Join or create a team in your profile before uploading plays to a team."),
                 dismissButton: .default(Text("OK"))
             )
-        }
-        .sheet(isPresented: $showUploadToTeamSheet) {
-            if let play = playToUploadToTeam, let teamID = userTeamID {
-                UploadPlayView(teamID: teamID, preselectedPlay: play)
-            }
         }
     }
 }
@@ -614,13 +441,19 @@ struct SavedPlayRow: View {
     let onView: () -> Void
     let onAR: () -> Void
     let onDelete: () -> Void
-    let onUpload: () -> Void
-    let isUploading: Bool
-    let uploadSuccess: Bool
     var body: some View {
         VStack(alignment: .leading) {
             HStack {
                 // Play details
+                if let filename = play.thumbnailFilename,
+                   let uiImg = ThumbnailService.loadThumbnail(filename: filename) {
+                    Image(uiImage: uiImg)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 100, height: 70)
+                        .clipped()
+                        .cornerRadius(8)
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(play.name)
                         .font(.headline)
@@ -655,20 +488,6 @@ struct SavedPlayRow: View {
                         Image(systemName: "trash")
                             .foregroundColor(.red)
                     }
-                    Button(action: onUpload) {
-                        if isUploading {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle())
-                        } else if uploadSuccess {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                        } else {
-                            Image(systemName: "icloud.and.arrow.up")
-                                .foregroundColor(.blue)
-                        }
-                    }
-                    .disabled(isUploading)
-                    .accessibilityLabel("Upload to Cloud")
                 }
                 .padding(.trailing, 8)
             }
