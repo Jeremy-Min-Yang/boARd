@@ -2307,7 +2307,7 @@ struct WhiteboardView: View {
         let pdfMetaData = [
             kCGPDFContextCreator: "boARd App",
             // Use the displayName property directly from AuthViewModel
-            kCGPDFContextAuthor: self.authViewModel.displayName, 
+            kCGPDFContextAuthor: "boARd",
             kCGPDFContextTitle: playToLoad?.name ?? (playNameInput.isEmpty ? "New Play" : playNameInput)
         ]
         let format = UIGraphicsPDFRendererFormat()
