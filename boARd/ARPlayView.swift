@@ -263,7 +263,6 @@ struct ARPlayView: UIViewRepresentable {
             }
             print("playerEntity scale:", playerEntity.scale)
             print("textEntity scale:", textEntity.scale)
-            print("debugSphere scale:", debugSphere.scale)
         }
         for (index, ballData) in play.balls.enumerated() {
             print("[ARPlayView prepareAnimationData] Ball [\(index)] details: ID \(ballData.id), " +
