@@ -16,16 +16,24 @@ extension ARView {
 
 class ARSessionDelegateDebug: NSObject, ARSessionDelegate {
     func session(_ session: ARSession, didFailWithError error: Error) {
+        #if DEBUG
         print("[ARSession] didFailWithError: \(error.localizedDescription)")
+        #endif
     }
     func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
+        #if DEBUG
         print("[ARSession] cameraDidChangeTrackingState: \(camera.trackingState)")
+        #endif
     }
     func sessionWasInterrupted(_ session: ARSession) {
+        #if DEBUG
         print("[ARSession] sessionWasInterrupted")
+        #endif
     }
     func sessionInterruptionEnded(_ session: ARSession) {
+        #if DEBUG
         print("[ARSession] sessionInterruptionEnded")
+        #endif
     }
 }
 
@@ -45,119 +53,145 @@ struct PreparedAREntitiesAndAnimations {
     var basketballPlayerAssignments: [UUID: UUID] = [:]
 }
 
+private let placeCourButtonTag = 999
+
 struct ARPlayView: UIViewRepresentable {
     let play: Models.SavedPlay
     @Binding var shouldStartAnimationBinding: Bool
 
-    @State private var arViewInstance: ARView? 
+    @State private var arViewInstance: ARView?
     @State private var isCourtPlaced: Bool = false
-    @State private var showPlacementButton: Bool = true  // New: Controls visibility of placement button
+    @State private var showPlacementButton: Bool = true
     @State private var previewAnchor: AnchorEntity? = nil
     @State private var previewCourtEntity: ModelEntity? = nil
 
     private let coachingOverlay = ARCoachingOverlayView()
 
-    static let walkingSpeed: Float = 0.2 // meters per second (adjust as needed)
+    static let walkingSpeed: Float = 0.2
+
+    var courtModelConfig: (modelName: String, scale: Float) {
+        switch play.courtTypeEnum {
+        case .full, .half:
+            return ("basketballCourt", 0.034)
+        case .soccer:
+            return ("soccerfield", 0.008)
+        case .football:
+            return ("footballField", 0.008)
+        }
+    }
 
     func makeUIView(context: Context) -> ARView {
+        #if DEBUG
         print("[ARPlayView] makeUIView called")
+        #endif
         let arView = ARView(frame: .zero)
+
+        // Disable expensive render features for better performance on older devices
+        arView.renderOptions = [
+            .disableMotionBlur,
+            .disableDepthOfField,
+            .disableGroundingShadows,
+            .disableHDR,
+            .disableCameraGrain
+        ]
+
         setupCoachingOverlay(for: arView, context: context)
         arView.session.delegate = context.coordinator
         self.arViewInstance = arView
 
         let config = ARWorldTrackingConfiguration()
         config.planeDetection = [.horizontal]
-        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-            config.sceneReconstruction = .mesh
-        }
+        // Scene reconstruction disabled — expensive on older iPads and not needed for placement
         arView.session.run(config)
-        print("[ARPlayView] AR session run with plane detection: \(config.planeDetection), sceneReconstruction: \(config.sceneReconstruction)")
+        #if DEBUG
+        print("[ARPlayView] AR session run with plane detection: \(config.planeDetection)")
+        #endif
 
-        // Set up focus entity for preview and attach to ARView
         let focus = FocusEntity(on: arView, focus: .classic)
         arView.focusEntity = focus
         focus.isEnabled = true
 
-        showPlacementButton = true // Ensure the button always appears when AR view opens
+        showPlacementButton = true
 
         // --- PREVIEW COURT LOGIC ---
         do {
             let previewAnchor = AnchorEntity(world: .zero)
-            let courtEntity = try ModelEntity.loadModel(named: "basketballCourt")
-            // Make all materials transparent
+            let (previewModelName, previewModelScale) = self.courtModelConfig
+            let courtEntity = try ModelEntity.loadModel(named: previewModelName)
             if let modelComponent = courtEntity.model {
                 let transparentMaterial = SimpleMaterial(color: .white.withAlphaComponent(0.5), isMetallic: false)
                 let materialCount = modelComponent.materials.count
                 courtEntity.model?.materials = Array(repeating: transparentMaterial, count: max(1, materialCount))
             }
-            // Scale similarly to other fields and lay flat
-            courtEntity.scale = [0.008, 0.008, 0.008]
+            courtEntity.scale = SIMD3<Float>(repeating: previewModelScale)
             courtEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
-            // Debug: preview 3D footprint aspect
+            #if DEBUG
             let previewBounds = courtEntity.visualBounds(relativeTo: nil)
-            print("[COMPARE][Preview] 3D 'basketballCourt' extents (x,z): (\(previewBounds.extents.x), \(previewBounds.extents.z)) aspect z/x=\(previewBounds.extents.z / max(0.0001, previewBounds.extents.x))")
+            print("[COMPARE][Preview] 3D '\(previewModelName)' extents (x,z): (\(previewBounds.extents.x), \(previewBounds.extents.z)) aspect z/x=\(previewBounds.extents.z / max(0.0001, previewBounds.extents.x))")
+            #endif
             previewAnchor.addChild(courtEntity)
             arView.scene.addAnchor(previewAnchor)
             self.previewAnchor = previewAnchor
             self.previewCourtEntity = courtEntity
+            #if DEBUG
             print("[ARPlayView] Preview court entity loaded and added to previewAnchor.")
+            #endif
         } catch {
+            #if DEBUG
             print("[ARPlayView] ERROR loading preview court: \(error.localizedDescription)")
+            #endif
         }
-        // Subscribe to scene updates to move preview with FocusEntity
         arView.scene.subscribe(to: SceneEvents.Update.self) { [weak arView] _ in
             guard let arView = arView, let focus = arView.focusEntity, let previewAnchor = self.previewAnchor else { return }
             previewAnchor.transform = Transform(matrix: focus.transformMatrix(relativeTo: nil))
         }
         // --- END PREVIEW COURT LOGIC ---
 
-        // Set up scene update subscription for animations
         context.coordinator.setupSceneUpdatesSubscription(arView: arView)
-        print("[ARPlayView] Scene update subscription set up")
 
         return arView
     }
 
     func updateUIView(_ uiView: ARView, context: Context) {
         coachingOverlay.frame = uiView.bounds
-        context.coordinator.currentContext = context // Ensure coordinator has latest context
-        
-        // Remove any existing Place Court buttons to avoid stacking
-        uiView.subviews.compactMap { $0 as? UIButton }.forEach { $0.removeFromSuperview() }
-        
-        // Add placement button if court is not placed
+        context.coordinator.currentContext = context
+
+        // Reuse existing button instead of remove+recreate every SwiftUI update
         if showPlacementButton {
-            let button = UIButton(type: .system)
-            button.setTitle("Place Court", for: .normal)
-            button.backgroundColor = .white
-            button.setTitleColor(.black, for: .normal)
-            button.layer.cornerRadius = 20
-            // Move to lower left
-            button.frame = CGRect(
-                x: 20, // 20pt from the left
-                y: uiView.bounds.height - 80, // 80pt from the bottom
-                width: 160,
-                height: 50
-            )
-            button.addTarget(context.coordinator, action: #selector(Coordinator.placeCourtButtonTapped), for: .touchUpInside)
-            uiView.addSubview(button)
+            if let existing = uiView.viewWithTag(placeCourButtonTag) as? UIButton {
+                existing.frame = CGRect(x: 20, y: uiView.bounds.height - 80, width: 160, height: 50)
+            } else {
+                let button = UIButton(type: .system)
+                button.tag = placeCourButtonTag
+                button.setTitle("Place Court", for: .normal)
+                button.backgroundColor = .white
+                button.setTitleColor(.black, for: .normal)
+                button.layer.cornerRadius = 20
+                button.frame = CGRect(x: 20, y: uiView.bounds.height - 80, width: 160, height: 50)
+                button.addTarget(context.coordinator, action: #selector(Coordinator.placeCourtButtonTapped), for: .touchUpInside)
+                uiView.addSubview(button)
+            }
+        } else {
+            uiView.viewWithTag(placeCourButtonTag)?.removeFromSuperview()
         }
-        
+
         if shouldStartAnimationBinding {
+            #if DEBUG
             print("[ARPlayView updateUIView] shouldStartAnimationBinding is true. Calling startAnimations.")
             print("[ARPlayView updateUIView] Number of animations in map: \(context.coordinator.animationDataMap.count)")
             for (id, data) in context.coordinator.animationDataMap {
                 print("[ARPlayView updateUIView] Animation data for \(id): points=\(data.pathPointsAR.count), duration=\(data.duration)")
             }
-            
-            // Ensure scene update subscription is active
+            #endif
+
             if context.coordinator.sceneUpdateSubscription == nil {
+                #if DEBUG
                 print("[ARPlayView updateUIView] Re-establishing scene update subscription")
+                #endif
                 context.coordinator.setupSceneUpdatesSubscription(arView: uiView)
             }
-            
-            startAnimations(arView: uiView, context: context) 
+
+            startAnimations(arView: uiView, context: context)
             DispatchQueue.main.async {
                 self.shouldStartAnimationBinding = false
             }
@@ -167,41 +201,48 @@ struct ARPlayView: UIViewRepresentable {
     func setupCoachingOverlay(for arView: ARView, context: Context) {
         coachingOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         arView.addSubview(coachingOverlay)
-        coachingOverlay.goal = .horizontalPlane 
+        coachingOverlay.goal = .horizontalPlane
         coachingOverlay.session = arView.session
-        coachingOverlay.delegate = context.coordinator 
+        coachingOverlay.delegate = context.coordinator
     }
 
-    // Made static
-    static func prepareAnimationData(play: Models.SavedPlay, courtSize: CGSize, arCourtWidth: Float, arCourtHeight: Float, courtAnchor: AnchorEntity) -> PreparedAREntitiesAndAnimations {
+    static func prepareAnimationData(play: Models.SavedPlay, courtSize: CGSize, courtBounds: BoundingBox, courtAnchor: AnchorEntity, courtType: CourtType? = nil) -> PreparedAREntitiesAndAnimations {
+        let resolvedCourtType = courtType ?? play.courtTypeEnum
         var preparedResult = PreparedAREntitiesAndAnimations()
+        #if DEBUG
         print("[ARPlayView prepareAnimationData] Processing play: \(play.name) (ID: \(play.id))")
         print("[ARPlayView prepareAnimationData] Number of players: \(play.players.count), Balls: \(play.balls.count)")
+        #endif
 
         for (index, player) in play.players.enumerated() {
+            #if DEBUG
             print("[ARPlayView prepareAnimationData] Player [\(index)] details: ID \(player.id), Num \(player.number), Pos \(player.position.cgPoint), PathID \(player.assignedPathId?.uuidString ?? "None")")
-            
+            #endif
+
             let playerEntity: ModelEntity
             do {
                 playerEntity = try ModelEntity.loadModel(named: "cylinder")
                 playerEntity.scale = [0.0005, 0.0005, 0.0005]
                 let isOpponent = player.number > 5
                 let material = SimpleMaterial(color: isOpponent ? .red : .green, isMetallic: false)
-                if let modelComponent = playerEntity.model {
+                if playerEntity.model != nil {
                     playerEntity.model?.materials = [material]
                 }
+                #if DEBUG
                 print("[ARPlayView prepareAnimationData] Successfully loaded 'cylinder.usdz' for player \(player.id)")
+                #endif
             } catch {
+                #if DEBUG
                 print("[ARPlayView prepareAnimationData] ERROR loading 'cylinder.usdz': \(error.localizedDescription). Using default sphere.")
+                #endif
                 let isOpponent = player.number > 5
                 playerEntity = ModelEntity(mesh: MeshResource.generateSphere(radius: 0.02),
                                            materials: [SimpleMaterial(color: isOpponent ? .red : .green, isMetallic: false)])
             }
-            // Add number label as 3D text above the cylinder (debug: make it very large and bold)
             let textMesh = MeshResource.generateText(
                 "\(player.number)",
-                extrusionDepth: 0.01, // Much thicker
-                font: .systemFont(ofSize: 0.4, weight: .bold), // Much larger and bold
+                extrusionDepth: 0.01,
+                font: .systemFont(ofSize: 0.4, weight: .bold),
                 containerFrame: .zero,
                 alignment: .center,
                 lineBreakMode: .byWordWrapping
@@ -209,15 +250,10 @@ struct ARPlayView: UIViewRepresentable {
             let textMaterial = SimpleMaterial(color: .white, isMetallic: false)
             let textEntity = ModelEntity(mesh: textMesh, materials: [textMaterial])
             textEntity.position = SIMD3<Float>(0, 0.04, 0)
-            textEntity.setScale(SIMD3<Float>(repeating: 1.0), relativeTo: nil) // Make text even larger
-            // Try different orientations (comment/uncomment as needed)
-            // textEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
-            // textEntity.orientation = simd_quatf(angle: .pi, axis: [0, 1, 0])
+            textEntity.setScale(SIMD3<Float>(repeating: 1.0), relativeTo: nil)
             playerEntity.addChild(textEntity)
-            
-            let initialPosAR = ARPlayView.rotate180Y(
-                ARPlayView.map2DToAR(player.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
-            )
+
+            let initialPosAR = ARPlayView.mapWhiteboardToAR(player.position.cgPoint, courtSize: courtSize, courtBounds: courtBounds, courtType: resolvedCourtType, yOffset: 0.05)
             playerEntity.position = initialPosAR
             playerEntity.name = "player_\(player.id)"
             courtAnchor.addChild(playerEntity)
@@ -225,28 +261,22 @@ struct ARPlayView: UIViewRepresentable {
 
             if let pathId = player.assignedPathId,
                let drawingData = play.drawings.first(where: { $0.id == pathId }) {
+                #if DEBUG
                 print("[ARPlayView prepareAnimationData] Found path for player \(player.id):")
                 print("  - Path points count: \(drawingData.points.count)")
                 print("  - Path type: \(drawingData.type)")
-                
-                let arPathPoints = drawingData.points.map { ARPlayView.map2DToAR($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
-                print("  - Converted to AR points: \(arPathPoints.count)")
-                
-                let rotatedPathPoints = arPathPoints.map { ARPlayView.rotate180Y($0) }
-                print("  - Rotated points: \(rotatedPathPoints.count)")
-                
-                var animationPathPointsAR = rotatedPathPoints.count >= 2 && drawingData.type == DrawingTool.arrow.rawValue ? [rotatedPathPoints.first!, rotatedPathPoints.last!] : rotatedPathPoints
-                print("  - Final animation points: \(animationPathPointsAR.count)")
+                #endif
+
+                let arPathPoints = drawingData.points.map { ARPlayView.mapWhiteboardToAR($0.cgPoint, courtSize: courtSize, courtBounds: courtBounds, courtType: resolvedCourtType, yOffset: 0.05) }
+                let animationPathPointsAR = arPathPoints.count >= 2 && drawingData.type == DrawingTool.arrow.rawValue ? [arPathPoints.first!, arPathPoints.last!] : arPathPoints
 
                 if !animationPathPointsAR.isEmpty {
                     let totalDistance = ARPlayView.calculateARPathLength(points: animationPathPointsAR)
                     let duration = TimeInterval(totalDistance / ARPlayView.walkingSpeed)
-                    print("[ARPlayView prepAnim] Player \(player.id):")
-                    print("  - PathID: \(pathId)")
-                    print("  - Points: \(animationPathPointsAR.count)")
-                    print("  - Distance: \(totalDistance)")
-                    print("  - Duration: \(duration)")
-                    
+                    #if DEBUG
+                    print("[ARPlayView prepAnim] Player \(player.id): PathID \(pathId), Points \(animationPathPointsAR.count), Dist \(totalDistance), Dur \(duration)")
+                    #endif
+
                     preparedResult.animationDataMap[player.id] = ARAnimationData(
                         entity: playerEntity,
                         pathPointsAR: animationPathPointsAR,
@@ -254,36 +284,41 @@ struct ARPlayView: UIViewRepresentable {
                         duration: max(0.1, duration)
                     )
                     playerEntity.position = animationPathPointsAR.first ?? initialPosAR
-                    print("  - Initial position set to: \(playerEntity.position)")
                 } else {
+                    #if DEBUG
                     print("[ARPlayView prepareAnimationData] Warning: No valid animation points for player \(player.id)")
+                    #endif
                 }
             } else {
+                #if DEBUG
                 print("[ARPlayView prepareAnimationData] No path assigned for player \(player.id)")
+                #endif
             }
-            print("playerEntity scale:", playerEntity.scale)
-            print("textEntity scale:", textEntity.scale)
         }
         for (index, ballData) in play.balls.enumerated() {
+            #if DEBUG
             print("[ARPlayView prepareAnimationData] Ball [\(index)] details: ID \(ballData.id), " +
                   "Pos \(ballData.position.cgPoint), PathID \(ballData.assignedPathId?.uuidString ?? "None"), " +
                   "PlayerID \(ballData.assignedPlayerId?.uuidString ?? "None")")
+            #endif
 
             let ballEntity: ModelEntity
             do {
                 ballEntity = try ModelEntity.loadModel(named: "ball")
                 ballEntity.scale = [0.0015, 0.0015, 0.0015]
+                #if DEBUG
                 print("[ARPlayView prepareAnimationData] Successfully loaded 'ball.usdz' for ball \(ballData.id)")
+                #endif
             } catch {
+                #if DEBUG
                 print("[ARPlayView prepareAnimationData] ERROR loading 'ball.usdz': \(error.localizedDescription). Using default orange sphere.")
+                #endif
                 let ballMaterial = SimpleMaterial(color: .orange, isMetallic: false)
                 ballEntity = ModelEntity(mesh: MeshResource.generateSphere(radius: 0.015),
                                          materials: [ballMaterial])
             }
 
-            let initialPosAR = ARPlayView.rotate180Y(
-                ARPlayView.map2DToARBall(ballData.position.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight)
-            )
+            let initialPosAR = ARPlayView.mapWhiteboardToAR(ballData.position.cgPoint, courtSize: courtSize, courtBounds: courtBounds, courtType: resolvedCourtType, yOffset: 0.001)
             ballEntity.position = initialPosAR
             ballEntity.name = "ball_\(ballData.id)"
             courtAnchor.addChild(ballEntity)
@@ -291,17 +326,20 @@ struct ARPlayView: UIViewRepresentable {
 
             if let assignedPlayerID = ballData.assignedPlayerId {
                 preparedResult.basketballPlayerAssignments[ballData.id] = assignedPlayerID
+                #if DEBUG
                 print("[ARPlayView prepareAnimationData] Ball \(ballData.id) is ASSIGNED to player \(assignedPlayerID). It will follow the player.")
+                #endif
             } else if let pathId = ballData.assignedPathId,
                       let drawingData = play.drawings.first(where: { $0.id == pathId }) {
-                let arPathPoints = drawingData.points.map { ARPlayView.map2DToARBall($0.cgPoint, courtSize: courtSize, arCourtWidth: arCourtWidth, arCourtHeight: arCourtHeight) }
-                let rotatedPathPoints = arPathPoints.map { ARPlayView.rotate180Y($0) }
-                var animationPathPointsAR = rotatedPathPoints.count >= 2 && drawingData.type == DrawingTool.arrow.rawValue ? [rotatedPathPoints.first!, rotatedPathPoints.last!] : rotatedPathPoints
+                let arPathPoints = drawingData.points.map { ARPlayView.mapWhiteboardToAR($0.cgPoint, courtSize: courtSize, courtBounds: courtBounds, courtType: resolvedCourtType, yOffset: 0.001) }
+                let animationPathPointsAR = arPathPoints.count >= 2 && drawingData.type == DrawingTool.arrow.rawValue ? [arPathPoints.first!, arPathPoints.last!] : arPathPoints
 
                 if !animationPathPointsAR.isEmpty {
                     let totalDistance = ARPlayView.calculateARPathLength(points: animationPathPointsAR)
                     let duration = TimeInterval(totalDistance / ARPlayView.walkingSpeed)
+                    #if DEBUG
                     print("[ARPlayView prepAnim] Ball \(ballData.id): PathID \(pathId), Points \(animationPathPointsAR.count), Dist \(totalDistance), Dur \(duration)")
+                    #endif
                     preparedResult.animationDataMap[ballData.id] = ARAnimationData(entity: ballEntity, pathPointsAR: animationPathPointsAR, totalDistance: totalDistance, duration: max(0.1, duration))
                     ballEntity.position = animationPathPointsAR.first ?? initialPosAR
                 }
@@ -310,70 +348,65 @@ struct ARPlayView: UIViewRepresentable {
         return preparedResult
     }
 
-    // Added context parameter, uses context.coordinator.animationDataMap
-    func startAnimations(arView: ARView, context: Context) { 
+    func startAnimations(arView: ARView, context: Context) {
         guard !context.coordinator.animationDataMap.isEmpty else {
-            print("[ARPlayView startAnimations] No animation data prepared in coordinator.animationDataMap. Count: \(context.coordinator.animationDataMap.count)")
+            #if DEBUG
+            print("[ARPlayView startAnimations] No animation data. Count: \(context.coordinator.animationDataMap.count)")
+            #endif
             return
         }
-        
-        print("[ARPlayView startAnimations] Resetting and starting animations for \(context.coordinator.animationDataMap.count) entities.")
+
+        #if DEBUG
+        print("[ARPlayView startAnimations] Starting animations for \(context.coordinator.animationDataMap.count) entities.")
+        #endif
         var didStartAnyAnimation = false
-        // Iterate over keys from coordinator's map
         for id in context.coordinator.animationDataMap.keys {
-            // Get mutable copy from coordinator's map
-            if var animData = context.coordinator.animationDataMap[id] { 
-                print("[ARPlayView startAnimations] Processing animation for \(id)")
-                print("[ARPlayView startAnimations] Path points: \(animData.pathPointsAR.count)")
-                print("[ARPlayView startAnimations] Duration: \(animData.duration)")
-                
+            if var animData = context.coordinator.animationDataMap[id] {
                 animData.isAnimating = false
                 animData.startTime = nil
                 if let firstPoint = animData.pathPointsAR.first {
                     animData.entity.position = firstPoint
-                    print("[ARPlayView startAnimations] Set initial position to: \(firstPoint)")
-                } else {
-                     print("[ARPlayView startAnimations] Warning - entity \(id) has no path points.")
                 }
 
                 if !animData.pathPointsAR.isEmpty && animData.duration > 0 {
                     animData.startTime = Date()
                     animData.isAnimating = true
-                    // Write modified struct back to coordinator's map
-                    context.coordinator.animationDataMap[id] = animData 
+                    context.coordinator.animationDataMap[id] = animData
                     didStartAnyAnimation = true
-                    print("[ARPlayView startAnimations] Animation effectively started for entity: \(id) at \(animData.startTime!)")
-                } else {
-                    print("[ARPlayView startAnimations] Skipping animation for \(id): No path or zero duration. PathPoints: \(animData.pathPointsAR.count), Duration: \(animData.duration)")
+                    #if DEBUG
+                    print("[ARPlayView startAnimations] Animation started for entity: \(id)")
+                    #endif
                 }
             }
         }
+        #if DEBUG
         if !didStartAnyAnimation {
-             print("[ARPlayView startAnimations] All animations were skipped or no valid animation data found.")
+            print("[ARPlayView startAnimations] All animations skipped or no valid data.")
+        }
+        #endif
+    }
+
+    // Maps a whiteboard point to AR anchor-local space using the court model's actual measured bounds.
+    // xNorm/yNorm (0→1) interpolate directly from bounds.min to bounds.max in each axis.
+    // Soccer/football swap axes because those canvases are rotated 90° vs the 3D model orientation.
+    static func mapWhiteboardToAR(_ point: CGPoint, courtSize: CGSize, courtBounds: BoundingBox, courtType: CourtType, yOffset: Float = 0.05) -> SIMD3<Float> {
+        let xNorm = Float(point.x / courtSize.width)
+        let yNorm = Float(point.y / courtSize.height)
+        let bMin = courtBounds.min
+        let bMax = courtBounds.max
+        switch courtType {
+        case .soccer, .football:
+            // Canvas X (short post-rotation axis) → AR Z; canvas Y (long post-rotation axis, flipped) → AR X
+            let arX = bMin.x + (1.0 - yNorm) * (bMax.x - bMin.x)
+            let arZ = bMin.z + xNorm * (bMax.z - bMin.z)
+            return SIMD3<Float>(arX, yOffset, arZ)
+        default:
+            let arX = bMin.x + xNorm * (bMax.x - bMin.x)
+            let arZ = bMin.z + yNorm * (bMax.z - bMin.z)
+            return SIMD3<Float>(arX, yOffset, arZ)
         }
     }
-    
-    // Made static
-    static func map2DToAR(_ point: CGPoint, courtSize: CGSize, arCourtWidth: Float, arCourtHeight: Float) -> SIMD3<Float> {
-        let xNorm = Float(point.x / courtSize.width)
-        let zNorm = Float(point.y / courtSize.height)
-        let x = (xNorm - 0.5) * arCourtWidth
-        let z = (zNorm - 0.5) * arCourtHeight
-        print("[ARPlayView map2DToAR] Converting point: \(point) to AR: (\(x), 0.05, \(z))")
-        return SIMD3<Float>(x, 0.05, z)
-    }
 
-    // New function specifically for ball positioning
-    static func map2DToARBall(_ point: CGPoint, courtSize: CGSize, arCourtWidth: Float, arCourtHeight: Float) -> SIMD3<Float> {
-        let xNorm = Float(point.x / courtSize.width)
-        let zNorm = Float(point.y / courtSize.height)
-        let x = (xNorm - 0.5) * arCourtWidth
-        let z = (zNorm - 0.5) * arCourtHeight
-        print("[ARPlayView map2DToARBall] Converting point: \(point) to AR: (\(x), 0.001, \(z))")
-        return SIMD3<Float>(x, 0.001, z)
-    }
-
-    // Made static
     static func calculateARPathLength(points: [SIMD3<Float>]) -> Float {
         guard points.count > 1 else { return 0 }
         var totalDistance: Float = 0
@@ -383,13 +416,11 @@ struct ARPlayView: UIViewRepresentable {
         return totalDistance
     }
 
-    // Made static
     static func getPointOnARPath(points: [SIMD3<Float>], progress: Float) -> SIMD3<Float>? {
         guard !points.isEmpty else { return nil }
         let clampedProgress = max(0.0, min(1.0, progress))
         guard clampedProgress > 0 else { return points.first }
         guard clampedProgress < 1 else { return points.last }
-        // Use static version of calculateARPathLength
         let totalLength = ARPlayView.calculateARPathLength(points: points)
         guard totalLength > 0 else { return points.first }
         let targetDistance = totalLength * clampedProgress
@@ -408,11 +439,6 @@ struct ARPlayView: UIViewRepresentable {
         return points.last
     }
 
-    // Helper to rotate a position 180 degrees around Y axis about the origin
-    static func rotate180Y(_ pos: SIMD3<Float>) -> SIMD3<Float> {
-        return SIMD3<Float>(-pos.x, pos.y, -pos.z)
-    }
-
     class Coordinator: NSObject, ARCoachingOverlayViewDelegate, ARSessionDelegate {
         var parent: ARPlayView
         var sceneUpdateSubscription: Cancellable?
@@ -429,108 +455,91 @@ struct ARPlayView: UIViewRepresentable {
         }
 
         func updateScene(event: SceneEvents.Update) {
-            var allAnimationsFinishedThisFrame = true
             let currentTime = Date()
 
-            // Update entities based on path animations
             for id in self.animationDataMap.keys {
                 guard var animData = self.animationDataMap[id], animData.isAnimating, let startTime = animData.startTime else {
-                    if self.animationDataMap[id]?.isAnimating == true && self.animationDataMap[id]?.startTime == nil {
-                        print("[ARPlayView Update] Warning: Animation for \(id) is marked isAnimating but has no start time.")
-                    }
                     continue
                 }
-                
-                allAnimationsFinishedThisFrame = false
 
                 let elapsedTime = currentTime.timeIntervalSince(startTime)
                 var progress = Float(elapsedTime / animData.duration)
-                // print("[ARPlayView Update] Entity \(id) - Progress: \(progress), Elapsed: \(elapsedTime), Duration: \(animData.duration)") // Verbose
 
                 if progress >= 1.0 {
                     progress = 1.0
                     animData.isAnimating = false
-                    // print("[ARPlayView Update] Animation finished for entity: \(id). Final Position: \(animData.entity.position)")
                 }
 
                 if let newPosition = ARPlayView.getPointOnARPath(points: animData.pathPointsAR, progress: progress) {
                     animData.entity.position = newPosition
-                    // print("[ARPlayView Update] Updated position for \(id) to: \(newPosition)")
-                } else {
-                    // print("[ARPlayView Update] Warning: Could not get point on path for entity \(id) at progress \(progress)")
                 }
                 self.animationDataMap[id] = animData
             }
 
-            // Update basketballs assigned to players
             for (ballID, playerID) in self.basketballPlayerAssignments {
                 guard let ballEntity = self.basketballEntities[ballID],
-                      let playerEntity = self.playerEntities[playerID] else {
-                    print("[ARPlayView Update] Warning: Could not find ball or player entity for assignment: BallID \(ballID), PlayerID \(playerID)")
-                    continue
-                }
-                
-                // Match ball position to player position (relative to the common courtAnchor)
-                // Add a slight Y offset so the ball appears near the player's feet or held.
+                      let playerEntity = self.playerEntities[playerID] else { continue }
                 var ballTargetPosition = playerEntity.position
-                ballTargetPosition.y += 0.02 // Adjust this offset as needed for visual appearance
+                ballTargetPosition.y += 0.02
                 ballEntity.position = ballTargetPosition
-                print("[ARPlayView Update] Updated ball \(ballID) position to follow player \(playerID) at \(ballTargetPosition)")
             }
         }
-        
+
         func setupSceneUpdatesSubscription(arView: ARView) {
-            // Cancel any existing subscription
             sceneUpdateSubscription?.cancel()
-            
-            // Create new subscription
             sceneUpdateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
                 self?.updateScene(event: event)
             }
+            #if DEBUG
             print("[ARPlayView Coordinator] Subscribed to scene updates.")
+            #endif
         }
-        
+
         deinit {
             sceneUpdateSubscription?.cancel()
-            print("[ARPlayView Coordinator] Unsubscribed from scene updates.")
         }
-        
+
         // MARK: - ARCoachingOverlayViewDelegate
-        func coachingOverlayViewWillActivate(_ coachingOverlayView: ARCoachingOverlayView) {
-            print("[ARPlayView Coordinator] Coaching overlay will activate.")
-        }
+        func coachingOverlayViewWillActivate(_ coachingOverlayView: ARCoachingOverlayView) {}
 
         func coachingOverlayViewDidDeactivate(_ coachingOverlayView: ARCoachingOverlayView) {
-            print("[ARPlayView Coordinator] Coaching overlay did deactivate. AR environment should be ready. Waiting for play button.")
+            #if DEBUG
+            print("[ARPlayView Coordinator] Coaching overlay did deactivate.")
+            #endif
         }
 
-        func coachingOverlayViewDidRequestSessionReset(_ coachingOverlayView: ARCoachingOverlayView) {
-            print("[ARPlayView Coordinator] Coaching overlay requested session reset.")
-        }
-        
+        func coachingOverlayViewDidRequestSessionReset(_ coachingOverlayView: ARCoachingOverlayView) {}
+
         // MARK: - ARSessionDelegate
         func session(_ session: ARSession, didFailWithError error: Error) {
+            #if DEBUG
             print("[ARSession Coordinator] didFailWithError: \(error.localizedDescription)")
+            #endif
         }
         func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
+            #if DEBUG
             print("[ARSession Coordinator] cameraDidChangeTrackingState: \(camera.trackingState)")
+            #endif
         }
         func sessionWasInterrupted(_ session: ARSession) {
-            print("[ARSession Coordinator] sessionWasInterrupted. Current tracking state: \(session.currentFrame?.camera.trackingState)")
+            #if DEBUG
+            print("[ARSession Coordinator] sessionWasInterrupted.")
+            #endif
         }
         func sessionInterruptionEnded(_ session: ARSession) {
-            print("[ARSession Coordinator] sessionInterruptionEnded. Restarting coaching if needed, then animations.")
-            if let arView = parent.arViewInstance {
-                if parent.coachingOverlay.isActive {
-                    print("[ARSession Coordinator] Coaching overlay is active after interruption ended, animations will start when it deactivates.")
-                }
-            }
+            #if DEBUG
+            print("[ARSession Coordinator] sessionInterruptionEnded.")
+            #endif
         }
 
         @objc func placeCourtButtonTapped() {
+            #if DEBUG
             print("[ARPlayView] Place Court button tapped")
+            #endif
             guard let arView = parent.arViewInstance, let context = currentContext else {
+                #if DEBUG
                 print("[ARPlayView] Cannot place court: arViewInstance or currentContext is nil.")
+                #endif
                 return
             }
             parent.placeCourtAtPreviewPosition(arView: arView, context: context)
@@ -541,79 +550,78 @@ struct ARPlayView: UIViewRepresentable {
         return Coordinator(self)
     }
 
-    // Place only the basketballCourt at the given position
-    func placeCourtOnly(at position: SIMD3<Float>, arView: ARView) -> AnchorEntity? {
+    func placeCourtOnly(at position: SIMD3<Float>, arView: ARView) -> (anchor: AnchorEntity, model: ModelEntity)? {
+        #if DEBUG
         print("[ARPlayView] placeCourtOnly called with position: \(position)")
+        #endif
+        let (modelName, modelScale) = self.courtModelConfig
         let courtEntity: ModelEntity
         do {
-            print("[ARPlayView] Attempting to load 'basketballCourt.usdz' from bundle...")
-            courtEntity = try ModelEntity.loadModel(named: "basketballCourt")
-            courtEntity.scale = [0.008, 0.008, 0.008]
+            courtEntity = try ModelEntity.loadModel(named: modelName)
+            courtEntity.scale = SIMD3<Float>(repeating: modelScale)
             courtEntity.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
-            // Debug: placed 3D footprint aspect
+            #if DEBUG
             let placedBounds = courtEntity.visualBounds(relativeTo: nil)
-            print("[COMPARE][Placed] 3D 'basketballCourt' extents (x,z): (\(placedBounds.extents.x), \(placedBounds.extents.z)) aspect z/x=\(placedBounds.extents.z / max(0.0001, placedBounds.extents.x))")
-            print("[ARPlayView] Successfully loaded 'basketballCourt.usdz' for the court and scaled it. Scale: \(courtEntity.scale)")
+            print("[COMPARE][Placed] 3D '\(modelName)' extents (x,z): (\(placedBounds.extents.x), \(placedBounds.extents.z)) aspect z/x=\(placedBounds.extents.z / max(0.0001, placedBounds.extents.x))")
+            #endif
         } catch {
-            print("[ARPlayView] ERROR loading 'basketballCourt.usdz': \(error.localizedDescription). Falling back to default yellow plane.")
-            let courtSize = self.play.courtTypeEnum.virtualCourtSize
-            let arCourtWidthFallback: Float = 0.3 
-            let arCourtHeightFallback: Float = 0.3 * Float(courtSize.height / courtSize.width)
+            #if DEBUG
+            print("[ARPlayView] ERROR loading '\(modelName).usdz': \(error.localizedDescription). Falling back to yellow plane.")
+            #endif
+            let boundary = self.play.courtTypeEnum.drawingBoundary
+            let arCourtWidthFallback: Float = 0.3
+            let arCourtHeightFallback: Float = arCourtWidthFallback * Float(boundary.height / boundary.width)
             let courtMesh = MeshResource.generatePlane(width: arCourtWidthFallback, depth: arCourtHeightFallback)
             let courtMaterial = SimpleMaterial(color: .yellow, isMetallic: false)
             courtEntity = ModelEntity(mesh: courtMesh, materials: [courtMaterial])
         }
         courtEntity.generateCollisionShapes(recursive: true)
         let courtAnchor = AnchorEntity(world: position)
-        print("[ARPlayView] Created courtAnchor at position: \(position)")
         courtAnchor.addChild(courtEntity)
-        print("[ARPlayView] Added courtEntity as child to courtAnchor.")
         arView.scene.addAnchor(courtAnchor)
-        print("[ARPlayView] Added courtAnchor to arView.scene. Scene anchors now: \(arView.scene.anchors.count)")
-        print("[ARPlayView] Court placement complete.")
-        return courtAnchor
+        return (courtAnchor, courtEntity)
     }
 
     func placeCourtAtPreviewPosition(arView: ARView, context: Context) {
-        print("[ARPlayView] placeCourtAtPreviewPosition called")
         guard let focusEntity = arView.focusEntity else {
+            #if DEBUG
             print("[ARPlayView] FocusEntity is nil, cannot place court.")
+            #endif
             return
         }
         guard focusEntity.onPlane else {
-            print("[ARPlayView] FocusEntity is not tracking a surface. Placement not allowed.")
+            #if DEBUG
+            print("[ARPlayView] FocusEntity is not tracking a surface.")
+            #endif
             return
         }
         let focusPosition = focusEntity.position
-        print("[ARPlayView] Placing court at focus position: \(focusPosition)")
-        
-        // Remove preview before placing real court
+
         if let previewAnchor = self.previewAnchor {
             arView.scene.removeAnchor(previewAnchor)
             self.previewAnchor = nil
             self.previewCourtEntity = nil
-            print("[ARPlayView] Preview court removed from scene.")
         }
 
-        // Place the court model and get the anchor it's on
-        guard let courtAnchor = placeCourtOnly(at: focusPosition, arView: arView) else {
-            print("[ARPlayView placeCourtAtPreviewPosition] Failed to place court model.")
+        guard let (courtAnchor, courtEntity) = placeCourtOnly(at: focusPosition, arView: arView) else {
             return
         }
 
-        // Now prepare and add other entities (players, balls) to this courtAnchor
-        // and set up animation data in the coordinator.
-        let courtSize = self.play.courtTypeEnum.virtualCourtSize
-        // Define AR court dimensions consistently (can be constants or calculated as needed)
-        let arCourtWidth: Float = 0.3 
-        let arCourtHeight: Float = arCourtWidth * Float(courtSize.height / courtSize.width) 
+        // Bounds in anchor-local space: extents/center account for the model's scale, rotation,
+        // and any origin offset — so players/balls placed relative to courtAnchor line up exactly.
+        let courtBounds = courtEntity.visualBounds(relativeTo: courtAnchor)
+        let boundary = self.play.courtTypeEnum.drawingBoundary
+        let courtSize = CGSize(width: boundary.width, height: boundary.height)
+        #if DEBUG
+        print("[ARPlayView] courtBounds min=\(courtBounds.min) max=\(courtBounds.max) extents=\(courtBounds.extents)")
+        #endif
 
         let preparedResult = ARPlayView.prepareAnimationData(
-            play: self.play, 
-            courtSize: courtSize, 
-            arCourtWidth: arCourtWidth, 
-            arCourtHeight: arCourtHeight, 
-            courtAnchor: courtAnchor
+            play: self.play,
+            courtSize: courtSize,
+            courtBounds: courtBounds,
+            courtAnchor: courtAnchor,
+            courtType: self.play.courtTypeEnum
         )
 
         context.coordinator.animationDataMap = preparedResult.animationDataMap
@@ -621,26 +629,21 @@ struct ARPlayView: UIViewRepresentable {
         context.coordinator.basketballEntities = preparedResult.basketballEntities
         context.coordinator.basketballPlayerAssignments = preparedResult.basketballPlayerAssignments
 
-        print("[ARPlayView placeCourtAtPreviewPosition] Prepared and assigned entities to coordinator:")
-        print("  - AnimationDataMap count: \(context.coordinator.animationDataMap.count)")
-        print("  - PlayerEntities count: \(context.coordinator.playerEntities.count)")
-        print("  - BasketballEntities count: \(context.coordinator.basketballEntities.count)")
-        print("  - BasketballPlayerAssignments count: \(context.coordinator.basketballPlayerAssignments.count)")
+        #if DEBUG
+        print("[ARPlayView placeCourtAtPreviewPosition] Entities assigned to coordinator:")
+        print("  - AnimationDataMap: \(context.coordinator.animationDataMap.count)")
+        print("  - PlayerEntities: \(context.coordinator.playerEntities.count)")
+        print("  - BasketballEntities: \(context.coordinator.basketballEntities.count)")
+        print("  - Assignments: \(context.coordinator.basketballPlayerAssignments.count)")
+        #endif
 
-        arView.setNeedsLayout() // Not typically needed for RealityKit scene changes
-        arView.setNeedsDisplay() // Not typically needed for RealityKit scene changes
         isCourtPlaced = true
         showPlacementButton = false
-        // Disable focus entity after placement
         arView.focusEntity?.isEnabled = false
         arView.focusEntity = nil
     }
 }
 
-// Usage in SwiftUI:
-// NavigationLink(destination: ARPlayView(play: selectedPlay)) { Text("View in AR") } 
-
-// Add exit button support
 struct ARPlayViewWrapper: View {
     @Environment(\.presentationMode) var presentationMode
     let play: Models.SavedPlay
@@ -662,4 +665,3 @@ struct ARPlayViewWrapper: View {
         }
     }
 }
-
